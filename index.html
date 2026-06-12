@@ -4954,7 +4954,7 @@ async function exportQAPDF(a){
 async function exportQAReport(asgId,format){
   const a=ASSIGNMENTS.find(x=>x.id===asgId);
   if(!a||!a.hasReview){ showToast('Run QA first — no review data found.','amber'); return; }
-  // PDF and Word: use backend service for reliable generation
+  // PDF and Word: generate entirely in-browser, no server needed
   if(format==='pdf'||format==='word'){
     const cl=a.checklist||CHECKLIST;
     const rawFindings=FINDINGS[a.findId]||[];
@@ -4963,23 +4963,8 @@ async function exportQAReport(asgId,format){
       engagement:{name:a.name||'',entity:a.entity||'',auditor:a.auditor||'',period:a.period||'',engType:a.engType||'Internal Audit Review'},
       findings, checklist:cl,
     };
-    const BACKEND='http://localhost:3001';
-    const endpoint=format==='pdf'?`${BACKEND}/api/report/pdf`:`${BACKEND}/api/report/word`;
-    const mime=format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    const pl={engagement:{name:a.name||'',entity:a.entity||'',auditor:a.auditor||'',period:a.period||'',engType:a.engType||'Internal Audit Review'},findings:FINDINGS[a.findId]||[],checklist:a.checklist||CHECKLIST};
-    showToast(`Generating ${format.toUpperCase()} via backend…`,'amber');
-    try{
-      const resp=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});
-      if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.detail||e.error||`HTTP ${resp.status}`);}
-      const data=await resp.json();
-      const bytes=new Uint8Array(atob(data.base64).split('').map(c=>c.charCodeAt(0)));
-      const url=URL.createObjectURL(new Blob([bytes],{type:mime}));
-      const lnk=document.createElement('a');lnk.href=url;lnk.download=data.filename;lnk.click();URL.revokeObjectURL(url);
-      showToast(`✓ ${data.filename} downloaded`,'green');
-    }catch(err){
-      downloadReportJSON(pl, format);
-    }
-    return;
+    if(format==='word'){ generateInBrowserReport(payload,'word'); return; }
+    if(format==='pdf'){  generateInBrowserPDF(payload);           return; }
   }
   if(!window.docx){ showToast('Word library not available — try Excel export instead','amber'); return; }
 
