@@ -3461,8 +3461,7 @@ async function wizExportReport(format){
     return;
   }
 
-  // PDF and Word → backend service
-  const BACKEND = 'http://localhost:3001';
+  // PDF and Word → fully in-browser, no server needed
   const curAsg  = ASSIGNMENTS.find(a=>a.id===S.currentAsgId) || {};
   const payload = {
     engagement: {
@@ -3476,35 +3475,14 @@ async function wizExportReport(format){
     checklist: cl,
   };
 
-  const endpoint = format === 'pdf' ? `${BACKEND}/api/report/pdf` : `${BACKEND}/api/report/word`;
-  const mimeType = format === 'pdf'
-    ? 'application/pdf'
-    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if(format === 'word'){
+    generateInBrowserReport(payload, 'word');
+    return;
+  }
 
-  showToast(`Generating ${format.toUpperCase()} report…`, 'amber');
-  try {
-    const resp = await fetch(endpoint, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-    });
-    if(!resp.ok){
-      const err = await resp.json().catch(()=>({error:'Unknown error'}));
-      throw new Error(err.detail || err.error || `HTTP ${resp.status}`);
-    }
-    const data = await resp.json();
-    const binary = atob(data.base64);
-    const bytes  = new Uint8Array(binary.length);
-    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mimeType });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = data.filename; a.click();
-    URL.revokeObjectURL(url);
-    showToast(`✓ ${data.filename} downloaded (${Math.round(data.size/1024)} KB)`, 'green');
-  } catch(err) {
-    console.error('wizExportReport backend error:', err);
-    downloadReportJSON(payload, format);
+  if(format === 'pdf'){
+    generateInBrowserPDF(payload);
+    return;
   }
 }
 
@@ -3714,6 +3692,123 @@ ${PHASES.map(ph=>{
   a.click();
   URL.revokeObjectURL(url);
   showToast('✓ Report downloaded — open in Microsoft Word','green');
+}
+
+function generateInBrowserPDF(payload){
+  const eng      = payload.engagement || {};
+  const findings = payload.findings   || [];
+  const cl       = payload.checklist  || CHECKLIST;
+  const PHASES   = ['Planning','Fieldwork','Reporting'];
+  const reportDate = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  const esc = s => String(s||'');
+
+  const calcR = pf => { const e=pf.filter(f=>f.status==='Exception').length; return e===0?'Generally Conforms':e<=3?'Partially Conforms':'Does Not Conform'; };
+  const statusColor = s => s==='Pass'?[26,122,74]:s==='Exception'?[204,34,0]:[217,119,6];
+
+  const enriched = findings.map(f=>{ const cp=cl.find(c=>c.no===f.cpNo)||{}; return{...f,phase:f.phase||cp.phase||'',act:f.act||cp.act||'',cpText:f.cpText||cp.cp||''}; });
+  const passes  = enriched.filter(f=>f.status==='Pass').length;
+  const excepts = enriched.filter(f=>f.status==='Exception').length;
+  const manrevs = enriched.filter(f=>f.status==='Manual Review').length;
+  const score   = enriched.length ? Math.round((passes/enriched.length)*100) : 0;
+  const overall = calcR(enriched);
+  const phData  = {};
+  PHASES.forEach(ph=>{ phData[ph]={ findings:enriched.filter(f=>f.phase===ph) }; phData[ph].rating=calcR(phData[ph].findings); });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const PW = 210, ML = 15, MR = 15, TW = PW - ML - MR;
+  let y = 15;
+
+  const checkPage = (needed=10) => { if(y + needed > 280){ doc.addPage(); y = 15; } };
+
+  // Cover
+  doc.setDrawColor(255,230,0); doc.setLineWidth(1.5); doc.line(ML, y, PW-MR, y); y+=5;
+  doc.setFontSize(9); doc.setTextColor(100); doc.text(esc(eng.entity||'Internal Audit')+' · Internal Audit Department', ML, y); y+=7;
+  doc.setFontSize(18); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(esc(eng.name||'QA Engagement'), ML, y); y+=8;
+  doc.setFontSize(11); doc.setTextColor(80); doc.setFont(undefined,'normal'); doc.text('Quality Assurance Review Report', ML, y); y+=6;
+  doc.setFontSize(9); doc.setTextColor(120); doc.text(reportDate, ML, y); y+=10;
+
+  // Meta table
+  const meta = [['Engagement',eng.name||'—'],['Entity / Client',eng.entity||'—'],['Auditor',eng.auditor||'—'],['Period',eng.period||'—'],['Engagement Type',eng.engType||'—'],['Report Date',reportDate]];
+  meta.forEach(([k,v])=>{
+    checkPage(7);
+    doc.setFillColor(245,245,245); doc.rect(ML, y-4, TW*0.35, 6, 'F');
+    doc.setFontSize(9); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(k, ML+2, y);
+    doc.setTextColor(30); doc.setFont(undefined,'normal'); doc.text(esc(v), ML+TW*0.35+3, y);
+    y+=7;
+  });
+  y+=4;
+
+  // Section heading helper
+  const secH = (title) => {
+    checkPage(12);
+    doc.setFontSize(12); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold');
+    doc.text(title, ML, y); y+=2;
+    doc.setDrawColor(46,117,182); doc.setLineWidth(0.5); doc.line(ML, y, PW-MR, y); y+=6;
+    doc.setFont(undefined,'normal');
+  };
+
+  // Section 2: Summary
+  secH('1. Summary of Key Themes');
+  PHASES.forEach(ph=>{
+    checkPage(12);
+    const exc=phData[ph].findings.filter(f=>f.status==='Exception');
+    const summary=exc.length ? `${exc.length} exception(s): ${[...new Set(exc.map(f=>f.act))].join('; ')}.`
+      : `No exceptions. ${ph} phase conforms to IIA Standards.`;
+    doc.setFontSize(9); doc.setTextColor(50);
+    const lines = doc.splitTextToSize(`${ph}: [${phData[ph].rating}] ${summary}`, TW);
+    lines.forEach(l=>{ checkPage(6); doc.text(l, ML, y); y+=5; });
+    y+=2;
+  });
+
+  // Section 3: Results table
+  secH('2. Results Summary');
+  checkPage(20);
+  const cols = [TW*0.35, TW*0.15, TW*0.15, TW*0.15, TW*0.2];
+  const headers = ['Audit Name','Planning','Fieldwork','Reporting','Overall'];
+  let x = ML;
+  doc.setFillColor(0,0,0); doc.setTextColor(255);
+  headers.forEach((h,i)=>{ doc.rect(x,y-4,cols[i],6,'F'); doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.text(h,x+2,y); x+=cols[i]; });
+  y+=4; x=ML;
+  doc.setTextColor(30); doc.setFont(undefined,'normal');
+  const ratingAbbr = r=>r==='Generally Conforms'?'GC':r==='Partially Conforms'?'PC':'DNC';
+  [eng.name||'—',...PHASES.map(ph=>ratingAbbr(phData[ph].rating)),ratingAbbr(overall)].forEach((v,i)=>{
+    doc.setFontSize(8); doc.text(esc(v),x+2,y); x+=cols[i];
+  });
+  y+=8;
+
+  // Section 4: Findings
+  secH('3. Key Observations & Action Plan');
+  const sortOrder={'Exception':0,'Manual Review':1,'Pass':2};
+  const sorted=[...enriched].sort((a,b)=>{const pd=PHASES.indexOf(a.phase)-PHASES.indexOf(b.phase);return pd!==0?pd:(sortOrder[a.status]||99)-(sortOrder[b.status]||99);});
+  sorted.forEach((f,i)=>{
+    checkPage(24);
+    const col = statusColor(f.status);
+    doc.setFillColor(col[0],col[1],col[2]); doc.rect(ML,y-4,3,18,'F');
+    doc.setFontSize(8); doc.setTextColor(col[0],col[1],col[2]); doc.setFont(undefined,'bold');
+    doc.text(`CP${f.cpNo} · ${f.status}  [${f.phase}]`, ML+5, y);
+    doc.setTextColor(30); doc.setFont(undefined,'normal');
+    y+=5;
+    const fLines = doc.splitTextToSize(esc(f.finding||''), TW-5);
+    fLines.slice(0,3).forEach(l=>{ checkPage(5); doc.text(l, ML+5, y); y+=4.5; });
+    if(f.rec){ const rLines=doc.splitTextToSize('Rec: '+esc(f.rec), TW-5); rLines.slice(0,2).forEach(l=>{ checkPage(5); doc.setTextColor(80); doc.text(l,ML+5,y); y+=4.5; }); doc.setTextColor(30); }
+    y+=3;
+  });
+
+  // Section 5: Score
+  secH('4. Scoring');
+  checkPage(20);
+  doc.setFontSize(32); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(`${score}`, ML, y); y+=2;
+  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(80);
+  doc.text(`Pass: ${passes}  |  Exception: ${excepts}  |  Manual Review: ${manrevs}  |  Overall: ${overall}`, ML, y); y+=10;
+
+  // Footer
+  doc.setFontSize(7); doc.setTextColor(150); doc.setFont(undefined,'normal');
+  doc.text(`GatiQA · ${esc(eng.name||'')} · ${esc(eng.entity||'')} · ${reportDate}`, ML, 290);
+
+  const filename = `GatiQA_Report_${(eng.name||'Report').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+  doc.save(filename);
+  showToast('✓ PDF downloaded — ' + filename, 'green');
 }
 
 function downloadReportJSON(payload, format){
