@@ -3506,7 +3506,20 @@ async function callBackendAndDownload(payload, format){
   } catch(e){ return false; }
 }
 
-/* ── Generate report entirely in-browser as Word HTML ─────────────────────── */
+/* ── Truncate text to max N words ─────────────────────────────────────────── */
+function summarise(text, maxWords){
+  if(!text) return '';
+  const words = String(text).trim().split(/\s+/);
+  if(words.length <= maxWords) return text;
+  // trim to maxWords, end on a sentence boundary if possible
+  let cut = words.slice(0, maxWords).join(' ');
+  const lastDot = cut.lastIndexOf('.');
+  if(lastDot > cut.length * 0.6) cut = cut.slice(0, lastDot + 1);
+  else cut = cut + '…';
+  return cut;
+}
+
+/* ── Generate report in-browser as Word-compatible HTML (EY format) ───────── */
 function generateInBrowserReport(payload, format){
   const eng      = payload.engagement || {};
   const findings = payload.findings   || [];
@@ -3514,184 +3527,211 @@ function generateInBrowserReport(payload, format){
   const PHASES   = ['Planning','Fieldwork','Reporting'];
   const reportDate = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
 
-  const calcR = pf => { const e=pf.filter(f=>f.status==='Exception').length; return e===0?'Generally Conforms':e<=3?'Partially Conforms':'Does Not Conform'; };
-  const ratingBg = r => r==='Generally Conforms'?'#E2EFDA':r==='Partially Conforms'?'#FFF2CC':'#FCE4D6';
-  const ratingColor = r => r==='Generally Conforms'?'#1A7A4A':r==='Partially Conforms'?'#D97706':'#CC2200';
-  const statusColor = s => s==='Pass'?'#1A7A4A':s==='Exception'?'#CC2200':'#D97706';
-  const statusBg    = s => s==='Pass'?'#E2EFDA':s==='Exception'?'#FCE4D6':'#FFF2CC';
-  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const calcR    = pf => { const e=pf.filter(f=>f.status==='Exception').length; return e===0?'Generally Conforms':e<=3?'Partially Conforms':'Does Not Conform'; };
+  const ratingSym= r => r==='Generally Conforms'?'<span style="color:#92D050;font-size:14pt">&#x2713;</span>':r==='Partially Conforms'?'<span style="color:#FFC000;font-size:14pt">&#x2713;</span>':'<span style="color:#FF0000;font-size:14pt">&#x2717;</span>';
+  const ratingColor=r => r==='Generally Conforms'?'#1A7A4A':r==='Partially Conforms'?'#D97706':'#CC2200';
+  const esc      = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  const enriched = findings.map(f=>{
-    const cp=cl.find(c=>c.no===f.cpNo)||{};
-    return{...f,phase:f.phase||cp.phase||'',act:f.act||cp.act||'',cpText:f.cpText||cp.cp||''};
+  const enriched = findings.map(f=>{ const cp=cl.find(c=>c.no===f.cpNo)||{}; return{...f,phase:f.phase||cp.phase||'',act:f.act||cp.act||'',cpText:f.cpText||cp.cp||''}; });
+  const overall  = calcR(enriched);
+  const passes   = enriched.filter(f=>f.status==='Pass').length;
+  const excepts  = enriched.filter(f=>f.status==='Exception').length;
+  const manrevs  = enriched.filter(f=>f.status==='Manual Review').length;
+  const phData   = {};
+  PHASES.forEach(ph=>{ phData[ph]={findings:enriched.filter(f=>f.phase===ph)}; phData[ph].rating=calcR(phData[ph].findings); });
+
+  const sortOrder={'Exception':0,'Manual Review':1,'Pass':2};
+  const sorted=[...enriched].sort((a,b)=>{ const pd=PHASES.indexOf(a.phase)-PHASES.indexOf(b.phase); return pd!==0?pd:(sortOrder[a.status]||99)-(sortOrder[b.status]||99); });
+
+  // Build Section 4 issue reference map (e.g. "Planning: 1a, 1b")
+  const issueRef = {};
+  PHASES.forEach(ph=>{
+    const exc=sorted.filter(f=>f.phase===ph&&(f.status==='Exception'||f.status==='Manual Review'));
+    if(!exc.length){ issueRef[ph]=''; return; }
+    const acts=[...new Set(exc.map(f=>f.act))];
+    const refs=acts.map((act,ai)=>{
+      const items=exc.filter(f=>f.act===act);
+      return items.map((_,fi)=>`${ai+1}${String.fromCharCode(97+fi)}`).join(', ');
+    }).join(', ');
+    issueRef[ph]=refs;
   });
+  const allRefs=PHASES.map(ph=>issueRef[ph]?`${ph}: ${issueRef[ph]}`:'').filter(Boolean).join('<br>')||'—';
 
-  const overall   = calcR(enriched);
-  const passes    = enriched.filter(f=>f.status==='Pass').length;
-  const excepts   = enriched.filter(f=>f.status==='Exception').length;
-  const manrevs   = enriched.filter(f=>f.status==='Manual Review').length;
-  const score     = enriched.length ? Math.round((passes/enriched.length)*100) : 0;
-  const phData    = {};
-  PHASES.forEach(ph=>{ phData[ph]={ findings:enriched.filter(f=>f.phase===ph) }; phData[ph].rating=calcR(phData[ph].findings); });
-
-  // Sort findings: Exception first, then Manual Review, then Pass — grouped by phase
-  const sortOrder = {'Exception':0,'Manual Review':1,'Pass':2};
-  const sorted = [...enriched].sort((a,b)=>{
-    const pd=PHASES.indexOf(a.phase)-PHASES.indexOf(b.phase);
-    return pd!==0?pd:(sortOrder[a.status]||99)-(sortOrder[b.status]||99);
-  });
-
-  const html = `
+  const html=`
 <html xmlns:o="urn:schemas-microsoft-com:office:office"
       xmlns:w="urn:schemas-microsoft-com:office:word"
       xmlns="http://www.w3.org/TR/REC-html40">
 <head>
 <meta charset="UTF-8">
-<title>GatiQA Report — ${esc(eng.name)}</title>
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<title>Internal Audit Quality Assurance Review Report</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
 <style>
-  body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 2cm; }
-  h1 { font-size: 22pt; font-weight: bold; color: #1F3864; margin: 0 0 4pt 0; }
-  h2 { font-size: 13pt; font-weight: bold; color: #1F3864; border-bottom: 2pt solid #2E75B6; padding-bottom: 3pt; margin: 16pt 0 6pt 0; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 12pt; }
-  td, th { border: 1pt solid #DDDDDD; padding: 5pt 7pt; font-size: 9pt; vertical-align: top; }
-  .black-hdr { background: #000000; color: #FFFFFF; font-weight: bold; }
-  .grey-hdr  { background: #D5DCDA; font-weight: bold; }
-  .phase-hdr { background: #2E75B6; color: #FFFFFF; font-weight: bold; font-size: 10pt; padding: 6pt 10pt; }
-  .act-hdr   { background: #F2F2F2; font-weight: bold; }
-  .cover-meta td { border: 0.5pt solid #DDDDDD; padding: 5pt 8pt; }
-  .cover-meta td:first-child { background: #F5F5F5; font-weight: bold; color: #1F3864; width: 30%; }
-  .rating-sym { font-size: 14pt; }
-  p { margin: 4pt 0; }
+  @page { margin: 2.54cm; size: A4; }
+  body  { font-family: Calibri, "EYInterstate Light", Arial, sans-serif; font-size: 9pt; color: #000000; margin: 0; }
+  h1    { font-family: Calibri, "EYInterstate", Arial, sans-serif; font-size: 20pt; color: #646464; font-weight: normal; margin: 0 0 6pt 0; border: none; }
+  h2    { font-family: Calibri, "EYInterstate", Arial, sans-serif; font-size: 13pt; color: #646464; font-weight: normal; border-bottom: 1.5pt solid #646464; padding-bottom: 3pt; margin: 18pt 0 8pt 0; }
+  p     { font-size: 9pt; margin: 4pt 0; line-height: 1.4; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 14pt; font-size: 9pt; }
+  td,th { border: 0.5pt solid #CCCCCC; padding: 5pt 7pt; vertical-align: top; font-size: 9pt; }
+  /* Section 2 overview table */
+  .ov-key  { font-family: Calibri,"EYInterstate",Arial,sans-serif; font-weight: bold; background: #F5F5F5; color: #000; width: 22%; }
+  /* Section 3 results table */
+  .s3-blk  { background: #000000; color: #FFFFFF; font-weight: bold; text-align: center; font-size: 9pt; }
+  .s3-gry  { background: #D5DCDA; color: #000000; font-weight: bold; text-align: center; font-size: 9pt; }
+  .s3-data { text-align: center; font-size: 18pt; line-height: 1; padding: 4pt; }
+  /* Section 4 observations table */
+  .s4-col-hdr { background: #000000; color: #FFFFFF; font-weight: bold; font-size: 9pt; }
+  .s4-phase   { background: #D5DCDA; color: #000000; font-weight: bold; font-size: 9pt; padding: 5pt 7pt; }
+  .s4-act     { background: #F2F2F2; color: #000000; font-weight: bold; font-size: 9pt; padding: 4pt 7pt; }
+  /* Section 5 rating table */
+  .rt-hdr  { background: #FFFFFF; text-align: center; font-weight: bold; }
+  .rt-gc   { background: #92D050; width: 40%; }
+  .rt-pc   { background: #FFC000; width: 40%; }
+  .rt-dnc  { background: #FF0000; width: 40%; }
+  /* Cover */
+  .cover-bar { border-top: 4pt solid #FFE600; padding-top: 10pt; margin-bottom: 16pt; }
+  .cover-sub { font-size: 12pt; color: #555555; margin: 0 0 4pt 0; }
+  .cover-date{ font-size: 9pt; color: #777777; margin: 6pt 0 0 0; }
 </style>
 </head>
 <body>
 
-<!-- COVER -->
-<div style="border-top:4pt solid #FFE600;padding-top:10pt;margin-bottom:20pt">
-  <p style="font-size:13pt;color:#555555;margin:0">${esc(eng.entity||'Internal Audit')} · Internal Audit Department</p>
-  <h1>${esc(eng.name||'QA Engagement')}</h1>
-  <p style="font-size:11pt;color:#555;margin:4pt 0">Quality Assurance Review Report</p>
-  <p style="font-size:10pt;color:#777">${esc(reportDate)}</p>
+<!-- ═══ COVER PAGE ═══ -->
+<div class="cover-bar">
+  <p class="cover-sub">${esc(eng.entity||'Internal Audit')} · Internal Audit Department</p>
+  <h1>Internal Audit<br>Quality Assurance Review Report</h1>
+  <p class="cover-date">${esc(reportDate)}</p>
 </div>
 
-<table class="cover-meta">
-  <tr><td>Engagement</td><td>${esc(eng.name||'—')}</td></tr>
-  <tr><td>Entity / Client</td><td>${esc(eng.entity||'—')}</td></tr>
-  <tr><td>Auditor</td><td>${esc(eng.auditor||'—')}</td></tr>
-  <tr><td>Period</td><td>${esc(eng.period||'—')}</td></tr>
-  <tr><td>Engagement Type</td><td>${esc(eng.engType||'Internal Audit Review')}</td></tr>
-  <tr><td>Report Date</td><td>${esc(reportDate)}</td></tr>
-</table>
-
-<!-- SECTION 1 -->
+<!-- ═══ SECTION 1: Overview ═══ -->
 <h2>1. Overview and approach</h2>
 <table>
-  <tr><td style="font-weight:bold;color:#1F3864;width:25%">QA coverage period</td><td>${esc(eng.period||'—')}</td></tr>
-  <tr><td style="font-weight:bold;color:#1F3864">QA Objective</td><td>The objective of this review is to assess the adequacy of the audit "${esc(eng.name)}" in terms of identification, assessment and evaluation of key risks and controls, rating of issues and communicating audit results, as well as adherence to the IIA Standards.</td></tr>
-  <tr><td style="font-weight:bold;color:#1F3864">QA Review Approach</td><td>The QA review covered all three phases — Planning, Fieldwork, and Reporting. The audit file was assessed against IIA Standards and departmental procedures. Auditor: ${esc(eng.auditor||'—')}.</td></tr>
+  <tr><td class="ov-key">QA coverage period</td><td>${esc(eng.period||'—')}</td></tr>
+  <tr><td class="ov-key">QA Objective</td><td>The objective of the review is to assess the adequacy of the audit <strong>"${esc(eng.name||'—')}"</strong> in terms of identification, assessment and evaluation of key risks and controls, rating of issues and communicating audit results, as well as adherence to the Global Internal Audit (GIA) Standards and the Audit Operations Manual ("AOM").</td></tr>
+  <tr><td class="ov-key">QA Review Approach</td><td>The QA review covered all three phases of audit execution — planning, fieldwork, and reporting — assessed against IIA Standards, Industry Standards and the AOM. For each phase, QA rated and assigned an overall QA rating. Auditor: <strong>${esc(eng.auditor||'—')}</strong>. Engagement type: ${esc(eng.engType||'Internal Audit Review')}.</td></tr>
 </table>
 
-<!-- SECTION 2 -->
+<!-- ═══ SECTION 2: Key Themes ═══ -->
 <h2>2. Summary of key themes</h2>
 ${PHASES.map(ph=>{
   const ps=phData[ph];
   const exc=ps.findings.filter(f=>f.status==='Exception');
-  const summary=exc.length
-    ? `${exc.length} exception(s) identified: ${[...new Set(exc.map(f=>f.act))].join('; ')}.`
-    : `No exceptions. The ${ph} phase conforms to IIA Standards in all material respects.`;
-  return `<p>The <strong>${ph} section</strong> has been rated "<strong style="color:${ratingColor(ps.rating)}">${ps.rating}</strong>". ${esc(summary)}</p>`;
-}).join('')}
+  const mr=ps.findings.filter(f=>f.status==='Manual Review');
+  let summary='';
+  if(exc.length){
+    const acts=[...new Set(exc.map(f=>f.act))];
+    summary=`QA review identified ${exc.length} exception(s) in: ${acts.join('; ')}.`;
+  } else if(mr.length){
+    summary=`No exceptions noted. ${mr.length} item(s) flagged for manual review.`;
+  } else {
+    summary=`No exceptions. The ${ph} phase conforms to IIA Standards in all material respects.`;
+  }
+  return `<p>The <strong>${ph} section</strong> has been rated <strong style="color:${ratingColor(ps.rating)}">"${ps.rating}"</strong>. ${esc(summary)}</p>`;
+}).join('\n')}
 
-<!-- SECTION 3 -->
+<!-- ═══ SECTION 3: Results Summary ═══ -->
 <h2>3. Results summary</h2>
-<p><strong>The QA rating for the engagement and different sections:</strong></p>
-<p>
-  <span style="color:#92D050;font-size:13pt">˜</span> Generally Conforms &nbsp;|&nbsp;
-  <span style="color:#FFC000;font-size:13pt">˜</span> Partially Conforms &nbsp;|&nbsp;
-  <span style="color:#FF0000;font-size:13pt">˜</span> Does Not Conform
-  <em style="color:#777;font-size:8pt">&nbsp;&nbsp;(Refer section 5 for rating scale definitions)</em>
+<p><strong>The QA rating for the audit and different sections:</strong></p>
+<p style="margin-bottom:6pt">
+  <span style="color:#92D050;font-size:12pt">&#x2713;</span> Generally Conforms &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="color:#FFC000;font-size:12pt">&#x2713;</span> Partially Conforms &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="color:#FF0000;font-size:12pt">&#x2717;</span> Does Not Conform
+  &nbsp;&nbsp;<em style="color:#888;font-size:8pt">(Refer section 5 for rating scale definitions)</em>
 </p>
 <table>
   <tr>
-    <td class="black-hdr" style="width:25%">Audit name</td>
-    <td class="black-hdr" colspan="3" style="text-align:center">Section ratings</td>
-    <td class="grey-hdr" style="text-align:center">Overall QA rating</td>
-    <td class="grey-hdr">Reference to issues</td>
+    <td class="s3-blk" style="width:26%">Audit name</td>
+    <td class="s3-blk" colspan="3" style="text-align:center">Section ratings</td>
+    <td class="s3-gry" style="width:12%">Overall QA rating</td>
+    <td class="s3-gry" style="width:20%">Reference to issues in Section 4</td>
   </tr>
   <tr>
-    <td class="black-hdr">Audit name</td>
-    <td class="black-hdr" style="text-align:center">Planning</td>
-    <td class="black-hdr" style="text-align:center">Fieldwork</td>
-    <td class="black-hdr" style="text-align:center">Reporting</td>
-    <td class="grey-hdr" style="text-align:center">Overall</td>
-    <td class="grey-hdr">Issues ref.</td>
+    <td class="s3-blk"></td>
+    <td class="s3-blk" style="width:12%">Planning</td>
+    <td class="s3-blk" style="width:12%">Fieldwork</td>
+    <td class="s3-blk" style="width:12%">Reporting</td>
+    <td class="s3-gry"></td>
+    <td class="s3-gry"></td>
   </tr>
   <tr>
-    <td>${esc(eng.name||'—')}</td>
-    ${PHASES.map(ph=>`<td style="text-align:center;background:${ratingBg(phData[ph].rating)}"><span class="rating-sym" style="color:${ratingColor(phData[ph].rating)}">˜</span></td>`).join('')}
-    <td style="text-align:center;background:${ratingBg(overall)}"><span class="rating-sym" style="color:${ratingColor(overall)}">˜</span></td>
-    <td style="font-size:8pt">${PHASES.map(ph=>{
-      const ex=phData[ph].findings.filter(f=>f.status==='Exception');
-      return ex.length?`${ph}: ${ex.map((_,i)=>String.fromCharCode(97+i)).join(', ')}`:'';
-    }).filter(Boolean).join('<br>')||'—'}</td>
+    <td style="font-size:9pt">${esc(eng.name||'—')}</td>
+    ${PHASES.map(ph=>`<td class="s3-data">${ratingSym(phData[ph].rating)}</td>`).join('')}
+    <td class="s3-data">${ratingSym(overall)}</td>
+    <td style="font-size:8pt;line-height:1.5">${allRefs}</td>
   </tr>
 </table>
 
-<!-- SECTION 4 -->
-<h2>4. Key observations – Action plan</h2>
-${PHASES.map(ph=>{
-  const exc=sorted.filter(f=>f.phase===ph&&(f.status==='Exception'||f.status==='Manual Review'));
-  if(!exc.length) return `<p style="color:#777;font-style:italic">${ph}: No exceptions identified.</p>`;
-  const activities=[...new Set(exc.map(f=>f.act))];
-  return `
-  <table>
-    <tr><td class="black-hdr" style="width:4%">#</td><td class="black-hdr" style="width:16%">Issue topic</td><td class="black-hdr" style="width:16%">Audit name</td><td class="black-hdr" style="width:34%">Description</td><td class="black-hdr" style="width:30%">Recommendation</td></tr>
-    <tr><td colspan="5" class="phase-hdr">${ph} section</td></tr>
-    ${activities.map((act,ai)=>{
-      const actExc=exc.filter(f=>f.act===act);
-      return `<tr><td colspan="5" class="act-hdr">${ai+1}.&nbsp;&nbsp;&nbsp;${esc(act)}</td></tr>`
-        +actExc.map((f,fi)=>`
-        <tr>
-          <td style="text-align:center">${String.fromCharCode(97+fi)}</td>
-          <td>${esc(f.act)}</td>
-          <td>${esc(eng.name||'')}</td>
-          <td>${esc(f.finding||'')}${f.remarks?`<br><br><strong style="color:#CC2200">Final Exception:</strong> ${esc(f.remarks)}`:''}${f.evidence?`<br><em style="color:#777;font-size:8pt">Evidence: ${esc(f.evidence)}</em>`:''}</td>
-          <td>${esc(f.rec||'')}</td>
-        </tr>`).join('');
-    }).join('')}
-  </table>`;
-}).join('')}
+<!-- ═══ SECTION 4: Key Observations ═══ -->
+<h2>4. Key observations – Action plan yet to be implemented</h2>
+${(()=>{
+  const exc=sorted.filter(f=>f.status==='Exception'||f.status==='Manual Review');
+  if(!exc.length) return '<p style="color:#777;font-style:italic">No exceptions or items requiring action identified.</p>';
+  let out='';
+  let globalActIdx=0;
+  PHASES.forEach(ph=>{
+    const phExc=exc.filter(f=>f.phase===ph);
+    if(!phExc.length) return;
+    const acts=[...new Set(phExc.map(f=>f.act))];
+    out+=`<table>
+  <tr>
+    <td class="s4-col-hdr" style="width:4%">#</td>
+    <td class="s4-col-hdr" style="width:18%">Issue topic</td>
+    <td class="s4-col-hdr" style="width:16%">Audit name</td>
+    <td class="s4-col-hdr" style="width:34%">Description</td>
+    <td class="s4-col-hdr" style="width:28%">Recommendation</td>
+  </tr>
+  <tr><td colspan="5" class="s4-phase">${ph} Section</td></tr>
+`;
+    acts.forEach((act,ai)=>{
+      globalActIdx++;
+      const actItems=phExc.filter(f=>f.act===act);
+      out+=`  <tr><td colspan="5" class="s4-act">${globalActIdx}.&nbsp;&nbsp;&nbsp;${esc(act)}</td></tr>\n`;
+      actItems.forEach((f,fi)=>{
+        const desc=esc(summarise(f.finding||'',100));
+        const rec =esc(summarise(f.rec||'',100));
+        const remarksHtml=f.remarks?`<br><br><strong style="color:#CC2200">Final Exception:</strong> ${esc(f.remarks)}`:'';
+        out+=`  <tr>
+    <td style="text-align:center;font-weight:bold">${String.fromCharCode(97+fi)}</td>
+    <td style="font-size:9pt">${esc(f.cpText||f.act||'')}</td>
+    <td style="font-size:9pt">${esc(eng.name||'')}</td>
+    <td style="font-size:9pt">${desc}${remarksHtml}</td>
+    <td style="font-size:9pt">${rec}</td>
+  </tr>\n`;
+      });
+    });
+    out+='</table>\n';
+  });
+  return out;
+})()}
 
-<!-- SECTION 5 -->
+<!-- ═══ SECTION 5: Rating Definitions ═══ -->
 <h2>5. Rating, Definitions and Scoring</h2>
-<p><strong style="color:#1A7A4A">Generally Conforms:</strong> Generally conforms to the department procedures and IIA mandatory guidance, in all material respects. While some opportunity for improvement may exist, it had minimal impact to overall execution quality.</p>
-<p><strong style="color:#D97706">Partially Conforms:</strong> Partially conforms to the department procedures and IIA mandatory guidance. While the majority of procedures was adhered to, the engagement did not achieve some key elements of audit execution quality.</p>
-<p><strong style="color:#CC2200">Does Not Conform:</strong> Does not conform to the department procedures and IIA mandatory guidance. Significant deficiencies were noted. Immediate corrective action is required.</p>
+<p><span style="color:#1A7A4A"><strong>&#x2713; Generally Conforms:</strong></span> Generally conforms to the department procedures and IIA mandatory guidance, in all material respects. While some opportunity for improvement may exist, it had minimal impact to overall execution quality, and did not limit the engagement's value to the organization. Any improvements can be addressed in future audit activities.</p>
+<p style="margin-top:6pt"><span style="color:#D97706"><strong>&#x2713; Partially Conforms:</strong></span> Partially conforms to the department procedures and IIA mandatory guidance. While the majority of department procedures and IIA mandatory guidance was adhered to, the engagement did not achieve some key elements of audit execution quality, partially impacting the audit's value to the organization. Corrective action may be required by Internal Audit management to address deficiencies noted.</p>
+<p style="margin-top:6pt"><span style="color:#CC2200"><strong>&#x2717; Does Not Conform:</strong></span> Does not conform to the department procedures and IIA mandatory guidance. Significant deficiencies were noted with respect to adherence to department procedures and IIA mandatory guidance. Immediate corrective action is required by Internal Audit management to address deficiencies noted, with details to be provided to the Audit Committee.</p>
 <br>
-<table style="width:60%">
-  <tr><td colspan="2" style="text-align:center;font-weight:bold;background:#fff">Rating Assignments Based on Individual Questions</td></tr>
-  <tr><td>Generally Conforms</td><td style="background:#92D050;width:40%">&nbsp;</td></tr>
-  <tr><td>Partially Conforms</td><td style="background:#FFC000">&nbsp;</td></tr>
-  <tr><td>Does Not Conform</td><td style="background:#FF0000">&nbsp;</td></tr>
+<table style="width:55%">
+  <tr><td colspan="2" class="rt-hdr">Rating Assignments Based on Individual Questions</td></tr>
+  <tr><td style="font-size:9pt">Generally Conforms</td><td class="rt-gc">&nbsp;</td></tr>
+  <tr><td style="font-size:9pt">Partially Conforms</td><td class="rt-pc">&nbsp;</td></tr>
+  <tr><td style="font-size:9pt">Does Not Conform</td><td class="rt-dnc">&nbsp;</td></tr>
 </table>
 
-<br><br>
-<p style="font-size:8pt;color:#777;border-top:1pt solid #1F3864;padding-top:6pt">
-  GatiQA &nbsp;·&nbsp; ${esc(eng.name||'')} &nbsp;·&nbsp; ${esc(eng.entity||'')} &nbsp;·&nbsp; ${esc(reportDate)}
+<br>
+<p style="font-size:7.5pt;color:#888888;border-top:0.5pt solid #646464;padding-top:5pt;margin-top:20pt">
+  Internal Audit Quality Assurance Review &nbsp;·&nbsp; ${esc(eng.name||'')} &nbsp;·&nbsp; ${esc(eng.entity||'')} &nbsp;·&nbsp; ${esc(reportDate)}
 </p>
 
 </body></html>`;
 
-  // Download as .doc (Word-compatible HTML)
-  const blob = new Blob([html], {type: 'application/msword;charset=utf-8'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `GatiQA_Report_${(eng.name||'Report').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
+  const blob=new Blob([html],{type:'application/msword;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`QA_Review_Report_${(eng.name||'Report').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('✓ Report downloaded — open in Microsoft Word','green');
+  showToast('✓ Word report downloaded — open in Microsoft Word','green');
 }
 
 function generateInBrowserPDF(payload){
@@ -3702,113 +3742,293 @@ function generateInBrowserPDF(payload){
   const reportDate = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const esc = s => String(s||'');
 
-  const calcR = pf => { const e=pf.filter(f=>f.status==='Exception').length; return e===0?'Generally Conforms':e<=3?'Partially Conforms':'Does Not Conform'; };
-  const statusColor = s => s==='Pass'?[26,122,74]:s==='Exception'?[204,34,0]:[217,119,6];
+  const calcR    = pf => { const e=pf.filter(f=>f.status==='Exception').length; return e===0?'Generally Conforms':e<=3?'Partially Conforms':'Does Not Conform'; };
+  const ratingRGB= r => r==='Generally Conforms'?[146,208,80]:r==='Partially Conforms'?[255,192,0]:[255,0,0];
+  const ratingLbl= r => r==='Generally Conforms'?'GC (Generally Conforms)':r==='Partially Conforms'?'PC (Partially Conforms)':'DNC (Does Not Conform)';
 
   const enriched = findings.map(f=>{ const cp=cl.find(c=>c.no===f.cpNo)||{}; return{...f,phase:f.phase||cp.phase||'',act:f.act||cp.act||'',cpText:f.cpText||cp.cp||''}; });
-  const passes  = enriched.filter(f=>f.status==='Pass').length;
-  const excepts = enriched.filter(f=>f.status==='Exception').length;
-  const manrevs = enriched.filter(f=>f.status==='Manual Review').length;
-  const score   = enriched.length ? Math.round((passes/enriched.length)*100) : 0;
-  const overall = calcR(enriched);
-  const phData  = {};
-  PHASES.forEach(ph=>{ phData[ph]={ findings:enriched.filter(f=>f.phase===ph) }; phData[ph].rating=calcR(phData[ph].findings); });
+  const overall  = calcR(enriched);
+  const passes   = enriched.filter(f=>f.status==='Pass').length;
+  const excepts  = enriched.filter(f=>f.status==='Exception').length;
+  const manrevs  = enriched.filter(f=>f.status==='Manual Review').length;
+  const phData   = {};
+  PHASES.forEach(ph=>{ phData[ph]={findings:enriched.filter(f=>f.phase===ph)}; phData[ph].rating=calcR(phData[ph].findings); });
+
+  const sortOrder={'Exception':0,'Manual Review':1,'Pass':2};
+  const sorted=[...enriched].sort((a,b)=>{ const pd=PHASES.indexOf(a.phase)-PHASES.indexOf(b.phase); return pd!==0?pd:(sortOrder[a.status]||99)-(sortOrder[b.status]||99); });
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-  const PW = 210, ML = 15, MR = 15, TW = PW - ML - MR;
-  let y = 15;
+  const PW=210, ML=14, MR=12, TW=PW-ML-MR;
+  let y=18;
 
-  const checkPage = (needed=10) => { if(y + needed > 280){ doc.addPage(); y = 15; } };
+  const newPage=()=>{ doc.addPage(); y=18; addFooter(); };
+  const chk=(n=10)=>{ if(y+n>283) newPage(); };
 
-  // Cover
-  doc.setDrawColor(255,230,0); doc.setLineWidth(1.5); doc.line(ML, y, PW-MR, y); y+=5;
-  doc.setFontSize(9); doc.setTextColor(100); doc.text(esc(eng.entity||'Internal Audit')+' · Internal Audit Department', ML, y); y+=7;
-  doc.setFontSize(18); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(esc(eng.name||'QA Engagement'), ML, y); y+=8;
-  doc.setFontSize(11); doc.setTextColor(80); doc.setFont(undefined,'normal'); doc.text('Quality Assurance Review Report', ML, y); y+=6;
-  doc.setFontSize(9); doc.setTextColor(120); doc.text(reportDate, ML, y); y+=10;
+  const addFooter=()=>{
+    const pg=doc.internal.getCurrentPageInfo().pageNumber;
+    doc.setFontSize(7); doc.setTextColor(150); doc.setFont('helvetica','normal');
+    doc.text(`Internal Audit Quality Assurance Review  ·  ${esc(eng.name||'')}  ·  ${esc(eng.entity||'')}  ·  ${reportDate}`, ML, 290);
+    doc.text(String(pg), PW-MR, 290, {align:'right'});
+  };
 
-  // Meta table
-  const meta = [['Engagement',eng.name||'—'],['Entity / Client',eng.entity||'—'],['Auditor',eng.auditor||'—'],['Period',eng.period||'—'],['Engagement Type',eng.engType||'—'],['Report Date',reportDate]];
-  meta.forEach(([k,v])=>{
-    checkPage(7);
-    doc.setFillColor(245,245,245); doc.rect(ML, y-4, TW*0.35, 6, 'F');
-    doc.setFontSize(9); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(k, ML+2, y);
-    doc.setTextColor(30); doc.setFont(undefined,'normal'); doc.text(esc(v), ML+TW*0.35+3, y);
-    y+=7;
+  const secHeading=(title)=>{
+    chk(14);
+    doc.setFontSize(13); doc.setTextColor(100,100,100); doc.setFont('helvetica','normal');
+    doc.text(title, ML, y); y+=1.5;
+    doc.setDrawColor(100,100,100); doc.setLineWidth(0.4); doc.line(ML, y, PW-MR, y); y+=7;
+    doc.setFont('helvetica','normal'); doc.setTextColor(0);
+  };
+
+  const wrapText=(txt, x, maxW, size=9, color=[0,0,0])=>{
+    doc.setFontSize(size); doc.setTextColor(...color); doc.setFont('helvetica','normal');
+    const lines=doc.splitTextToSize(esc(txt), maxW);
+    lines.forEach(l=>{ chk(5); doc.text(l,x,y); y+=4.5; });
+  };
+
+  // ── COVER PAGE ────────────────────────────────────────────────────
+  doc.setFillColor(255,230,0); doc.rect(ML, y, TW, 1.2, 'F'); y+=6;
+  doc.setFontSize(9); doc.setTextColor(85); doc.setFont('helvetica','normal');
+  doc.text(esc(eng.entity||'Internal Audit')+' · Internal Audit Department', ML, y); y+=9;
+  doc.setFontSize(22); doc.setTextColor(100,100,100); doc.setFont('helvetica','bold');
+  doc.text('Internal Audit', ML, y); y+=9;
+  doc.setFontSize(18); doc.setFont('helvetica','normal');
+  doc.text('Quality Assurance Review Report', ML, y); y+=8;
+  doc.setFontSize(10); doc.setTextColor(120); doc.setFont('helvetica','normal');
+  doc.text(reportDate, ML, y); y+=14;
+  addFooter();
+
+  // ── SECTION 1: OVERVIEW ───────────────────────────────────────────
+  secHeading('1. Overview and approach');
+  const ovRows=[
+    ['QA coverage period', eng.period||'—'],
+    ['QA Objective', `The objective of the review is to assess the adequacy of the audit "${esc(eng.name||'—')}" in terms of identification, assessment and evaluation of key risks and controls, rating of issues and communicating audit results, as well as adherence to the GIA Standards and AOM.`],
+    ['QA Review Approach', `The QA review covered all three phases — planning, fieldwork, and reporting — assessed against IIA Standards and AOM. Auditor: ${esc(eng.auditor||'—')}. Engagement: ${esc(eng.engType||'Internal Audit Review')}.`],
+  ];
+  const col1W=38, col2W=TW-col1W-2;
+  ovRows.forEach(([k,v])=>{
+    const vLines=doc.setFontSize(9)||doc.splitTextToSize(esc(v),col2W);
+    const rowH=Math.max(7, vLines.length*4.5+4);
+    chk(rowH+2);
+    doc.setFillColor(245,245,245); doc.rect(ML, y-4.5, col1W, rowH, 'F');
+    doc.setDrawColor(200); doc.setLineWidth(0.2);
+    doc.rect(ML, y-4.5, TW, rowH);
+    doc.rect(ML, y-4.5, col1W, rowH);
+    doc.setFontSize(8.5); doc.setTextColor(89,89,89); doc.setFont('helvetica','bold');
+    const kLines=doc.splitTextToSize(k,col1W-3);
+    kLines.forEach((l,i)=>doc.text(l, ML+2, y+(i*4.5)));
+    doc.setFontSize(9); doc.setTextColor(0); doc.setFont('helvetica','normal');
+    vLines.forEach((l,i)=>doc.text(l, ML+col1W+2, y+(i*4.5)));
+    y+=rowH+1;
   });
   y+=4;
 
-  // Section heading helper
-  const secH = (title) => {
-    checkPage(12);
-    doc.setFontSize(12); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold');
-    doc.text(title, ML, y); y+=2;
-    doc.setDrawColor(46,117,182); doc.setLineWidth(0.5); doc.line(ML, y, PW-MR, y); y+=6;
-    doc.setFont(undefined,'normal');
-  };
-
-  // Section 2: Summary
-  secH('1. Summary of Key Themes');
+  // ── SECTION 2: KEY THEMES ─────────────────────────────────────────
+  secHeading('2. Summary of key themes');
   PHASES.forEach(ph=>{
-    checkPage(12);
-    const exc=phData[ph].findings.filter(f=>f.status==='Exception');
-    const summary=exc.length ? `${exc.length} exception(s): ${[...new Set(exc.map(f=>f.act))].join('; ')}.`
-      : `No exceptions. ${ph} phase conforms to IIA Standards.`;
-    doc.setFontSize(9); doc.setTextColor(50);
-    const lines = doc.splitTextToSize(`${ph}: [${phData[ph].rating}] ${summary}`, TW);
-    lines.forEach(l=>{ checkPage(6); doc.text(l, ML, y); y+=5; });
-    y+=2;
-  });
-
-  // Section 3: Results table
-  secH('2. Results Summary');
-  checkPage(20);
-  const cols = [TW*0.35, TW*0.15, TW*0.15, TW*0.15, TW*0.2];
-  const headers = ['Audit Name','Planning','Fieldwork','Reporting','Overall'];
-  let x = ML;
-  doc.setFillColor(0,0,0); doc.setTextColor(255);
-  headers.forEach((h,i)=>{ doc.rect(x,y-4,cols[i],6,'F'); doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.text(h,x+2,y); x+=cols[i]; });
-  y+=4; x=ML;
-  doc.setTextColor(30); doc.setFont(undefined,'normal');
-  const ratingAbbr = r=>r==='Generally Conforms'?'GC':r==='Partially Conforms'?'PC':'DNC';
-  [eng.name||'—',...PHASES.map(ph=>ratingAbbr(phData[ph].rating)),ratingAbbr(overall)].forEach((v,i)=>{
-    doc.setFontSize(8); doc.text(esc(v),x+2,y); x+=cols[i];
-  });
-  y+=8;
-
-  // Section 4: Findings
-  secH('3. Key Observations & Action Plan');
-  const sortOrder={'Exception':0,'Manual Review':1,'Pass':2};
-  const sorted=[...enriched].sort((a,b)=>{const pd=PHASES.indexOf(a.phase)-PHASES.indexOf(b.phase);return pd!==0?pd:(sortOrder[a.status]||99)-(sortOrder[b.status]||99);});
-  sorted.forEach((f,i)=>{
-    checkPage(24);
-    const col = statusColor(f.status);
-    doc.setFillColor(col[0],col[1],col[2]); doc.rect(ML,y-4,3,18,'F');
-    doc.setFontSize(8); doc.setTextColor(col[0],col[1],col[2]); doc.setFont(undefined,'bold');
-    doc.text(`CP${f.cpNo} · ${f.status}  [${f.phase}]`, ML+5, y);
-    doc.setTextColor(30); doc.setFont(undefined,'normal');
-    y+=5;
-    const fLines = doc.splitTextToSize(esc(f.finding||''), TW-5);
-    fLines.slice(0,3).forEach(l=>{ checkPage(5); doc.text(l, ML+5, y); y+=4.5; });
-    if(f.rec){ const rLines=doc.splitTextToSize('Rec: '+esc(f.rec), TW-5); rLines.slice(0,2).forEach(l=>{ checkPage(5); doc.setTextColor(80); doc.text(l,ML+5,y); y+=4.5; }); doc.setTextColor(30); }
+    chk(14);
+    const ps=phData[ph];
+    const exc=ps.findings.filter(f=>f.status==='Exception');
+    const mr=ps.findings.filter(f=>f.status==='Manual Review');
+    let summary='';
+    if(exc.length){ const acts=[...new Set(exc.map(f=>f.act))]; summary=`${exc.length} exception(s) identified in: ${acts.join('; ')}.`; }
+    else if(mr.length){ summary=`No exceptions. ${mr.length} item(s) flagged for manual review.`; }
+    else { summary=`No exceptions. The ${ph} phase conforms to IIA Standards in all material respects.`; }
+    const rgb=ratingRGB(ps.rating);
+    doc.setFontSize(9); doc.setTextColor(0); doc.setFont('helvetica','bold');
+    doc.text(`${ph} section`, ML, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(...rgb);
+    doc.text(` — "${ps.rating}"`, ML+doc.getTextWidth(`${ph} section`), y);
+    doc.setTextColor(0); y+=5;
+    const lines=doc.splitTextToSize(summary, TW-4);
+    lines.forEach(l=>{ chk(5); doc.text(l, ML+4, y); y+=4.5; });
     y+=3;
   });
 
-  // Section 5: Score
-  secH('4. Scoring');
-  checkPage(20);
-  doc.setFontSize(32); doc.setTextColor(31,56,100); doc.setFont(undefined,'bold'); doc.text(`${score}`, ML, y); y+=2;
-  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(80);
-  doc.text(`Pass: ${passes}  |  Exception: ${excepts}  |  Manual Review: ${manrevs}  |  Overall: ${overall}`, ML, y); y+=10;
+  // ── SECTION 3: RESULTS SUMMARY ────────────────────────────────────
+  secHeading('3. Results summary');
+  chk(30);
+  doc.setFontSize(9); doc.setTextColor(0); doc.setFont('helvetica','normal');
+  doc.text('The QA rating for the audit and different sections:', ML, y); y+=6;
 
-  // Footer
-  doc.setFontSize(7); doc.setTextColor(150); doc.setFont(undefined,'normal');
-  doc.text(`GatiQA · ${esc(eng.name||'')} · ${esc(eng.entity||'')} · ${reportDate}`, ML, 290);
+  // Header row 1 — black cols (Audit name + 3 phases) + grey cols (Overall + Ref)
+  const c0=50, c1=24, c2=24, c3=24, c4=28, c5=TW-c0-c1-c2-c3-c4;
+  const rowH1=8;
+  doc.setFillColor(0,0,0);   doc.rect(ML,y,c0,rowH1,'F');
+  doc.setFillColor(0,0,0);   doc.rect(ML+c0,y,c1+c2+c3,rowH1,'F');
+  doc.setFillColor(213,220,218); doc.rect(ML+c0+c1+c2+c3,y,c4,rowH1,'F');
+  doc.setFillColor(213,220,218); doc.rect(ML+c0+c1+c2+c3+c4,y,c5,rowH1,'F');
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor(255); doc.text('Audit name', ML+2, y+5.5);
+  doc.text('Section ratings', ML+c0+(c1+c2+c3)/2, y+5.5, {align:'center'});
+  doc.setTextColor(0); doc.text('Overall QA', ML+c0+c1+c2+c3+2, y+5.5);
+  doc.text('Reference', ML+c0+c1+c2+c3+c4+2, y+5.5);
+  y+=rowH1;
 
-  const filename = `GatiQA_Report_${(eng.name||'Report').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+  // Header row 2
+  doc.setFillColor(0,0,0); doc.rect(ML,y,c0,rowH1,'F');
+  doc.setFillColor(0,0,0); doc.rect(ML+c0,y,c1,rowH1,'F');
+  doc.setFillColor(0,0,0); doc.rect(ML+c0+c1,y,c2,rowH1,'F');
+  doc.setFillColor(0,0,0); doc.rect(ML+c0+c1+c2,y,c3,rowH1,'F');
+  doc.setFillColor(213,220,218); doc.rect(ML+c0+c1+c2+c3,y,c4,rowH1,'F');
+  doc.setFillColor(213,220,218); doc.rect(ML+c0+c1+c2+c3+c4,y,c5,rowH1,'F');
+  doc.setTextColor(255);
+  doc.text('Audit name',   ML+2,        y+5.5);
+  doc.text('Planning',     ML+c0+c1/2,  y+5.5, {align:'center'});
+  doc.text('Fieldwork',    ML+c0+c1+c2/2, y+5.5, {align:'center'});
+  doc.text('Reporting',    ML+c0+c1+c2+c3/2, y+5.5, {align:'center'});
+  doc.setTextColor(0);
+  doc.text('rating', ML+c0+c1+c2+c3+2, y+5.5);
+  doc.text('to issues', ML+c0+c1+c2+c3+c4+2, y+5.5);
+  y+=rowH1;
+
+  // Data row
+  const rowH2=10;
+  doc.setDrawColor(200); doc.setLineWidth(0.2);
+  doc.rect(ML,y,TW,rowH2);
+  doc.line(ML+c0,y,ML+c0,y+rowH2);
+  doc.line(ML+c0+c1,y,ML+c0+c1,y+rowH2);
+  doc.line(ML+c0+c1+c2,y,ML+c0+c1+c2,y+rowH2);
+  doc.line(ML+c0+c1+c2+c3,y,ML+c0+c1+c2+c3,y+rowH2);
+  doc.line(ML+c0+c1+c2+c3+c4,y,ML+c0+c1+c2+c3+c4,y+rowH2);
+  doc.setFontSize(8); doc.setTextColor(0); doc.setFont('helvetica','normal');
+  const nameLines=doc.splitTextToSize(esc(eng.name||'—'), c0-3);
+  nameLines.forEach((l,i)=>doc.text(l, ML+2, y+4+(i*4)));
+  PHASES.forEach((ph,pi)=>{
+    const rgb=ratingRGB(phData[ph].rating);
+    const cx=ML+c0+(pi===0?c1/2:pi===1?c1+c2/2:c1+c2+c3/2);
+    doc.setTextColor(...rgb); doc.setFontSize(12); doc.setFont('helvetica','bold');
+    doc.text('✓', cx, y+7, {align:'center'});
+  });
+  const orgb=ratingRGB(overall);
+  doc.setTextColor(...orgb); doc.setFontSize(12);
+  doc.text('✓', ML+c0+c1+c2+c3+c4/2, y+7, {align:'center'});
+  doc.setFontSize(7.5); doc.setTextColor(0); doc.setFont('helvetica','normal');
+  const refLines=PHASES.map(ph=>{
+    const ex=sorted.filter(f=>f.phase===ph&&(f.status==='Exception'||f.status==='Manual Review'));
+    if(!ex.length) return '';
+    const acts=[...new Set(ex.map(f=>f.act))];
+    let refs=''; acts.forEach((act,ai)=>{ const items=ex.filter(f=>f.act===act); items.forEach((_,fi)=>{ refs+=(refs?', ':'')+`${ai+1}${String.fromCharCode(97+fi)}`; }); });
+    return `${ph}: ${refs}`;
+  }).filter(Boolean);
+  refLines.forEach((l,i)=>doc.text(l, ML+c0+c1+c2+c3+c4+2, y+4+(i*4)));
+  y+=rowH2+6;
+
+  // ── SECTION 4: KEY OBSERVATIONS ───────────────────────────────────
+  secHeading('4. Key observations – Action plan yet to be implemented');
+  const excFindings=sorted.filter(f=>f.status==='Exception'||f.status==='Manual Review');
+
+  if(!excFindings.length){
+    wrapText('No exceptions or items requiring action identified.', ML, TW, 9, [120,120,120]);
+    y+=4;
+  } else {
+    let globalActIdx=0;
+    PHASES.forEach(ph=>{
+      const phExc=excFindings.filter(f=>f.phase===ph);
+      if(!phExc.length) return;
+      const acts=[...new Set(phExc.map(f=>f.act))];
+
+      // Table header
+      chk(24);
+      const hH=7, colN=10, colT=34, colA=28, colD=TW-colN-colT-colA-colR, colR=44;
+      const xN=ML, xT=xN+colN, xA=xT+colT, xD=xA+colA, xRec=xD+colD;
+
+      doc.setFillColor(0,0,0); doc.rect(ML,y,TW,hH,'F');
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(255);
+      doc.text('#',    xN+1,  y+5);
+      doc.text('Issue topic', xT+1, y+5);
+      doc.text('Audit name',  xA+1, y+5);
+      doc.text('Description', xD+1, y+5);
+      doc.text('Recommendation', xRec+1, y+5);
+      y+=hH;
+
+      // Phase band
+      chk(8);
+      doc.setFillColor(213,220,218); doc.rect(ML,y,TW,7,'F');
+      doc.setFontSize(9); doc.setTextColor(0); doc.setFont('helvetica','bold');
+      doc.text(`${ph} Section`, ML+3, y+5); y+=7;
+
+      acts.forEach((act,ai)=>{
+        globalActIdx++;
+        // Activity sub-band
+        chk(7);
+        doc.setFillColor(242,242,242); doc.rect(ML,y,TW,6,'F');
+        doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','bold');
+        doc.text(`${globalActIdx}.   ${act}`, ML+2, y+4.5); y+=6;
+
+        const actItems=phExc.filter(f=>f.act===act);
+        actItems.forEach((f,fi)=>{
+          const descTxt=summarise(f.finding||f.cpText||'', 100);
+          const recTxt =summarise(f.rec||'', 100);
+          const issueTxt=f.cpText||f.act||'';
+
+          const dLines  =doc.setFontSize(8)||doc.splitTextToSize(esc(descTxt),  colD-3);
+          const rLines  =doc.setFontSize(8)||doc.splitTextToSize(esc(recTxt),   colR-3);
+          const tLines  =doc.setFontSize(8)||doc.splitTextToSize(esc(issueTxt), colT-3);
+          const aLines  =doc.setFontSize(8)||doc.splitTextToSize(esc(eng.name||''),colA-3);
+          const maxLines=Math.max(dLines.length, rLines.length, tLines.length, aLines.length, 1);
+          const cellH   =Math.max(10, maxLines*4+5);
+
+          chk(cellH+2);
+          doc.setDrawColor(200); doc.setLineWidth(0.2);
+          doc.rect(ML, y, TW, cellH);
+          doc.line(xT,y,xT,y+cellH); doc.line(xA,y,xA,y+cellH);
+          doc.line(xD,y,xD,y+cellH); doc.line(xRec,y,xRec,y+cellH);
+
+          doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(0);
+          doc.text(String.fromCharCode(97+fi), xN+colN/2, y+5, {align:'center'});
+          doc.setFont('helvetica','normal');
+          tLines.forEach((l,i)=>doc.text(l, xT+1,  y+4+(i*4)));
+          aLines.forEach((l,i)=>doc.text(l, xA+1,  y+4+(i*4)));
+          doc.setTextColor(30);
+          dLines.forEach((l,i)=>doc.text(l, xD+1,  y+4+(i*4)));
+          doc.setTextColor(60);
+          rLines.forEach((l,i)=>doc.text(l, xRec+1, y+4+(i*4)));
+          y+=cellH;
+        });
+      });
+      y+=5;
+    });
+  }
+
+  // ── SECTION 5: RATING DEFINITIONS ─────────────────────────────────
+  secHeading('5. Rating, Definitions and Scoring');
+  const defs=[
+    {r:'Generally Conforms', rgb:[146,208,80], sym:'✓', txt:'Generally conforms to the department procedures and IIA mandatory guidance, in all material respects. While some opportunity for improvement may exist, it had minimal impact to overall execution quality, and did not limit the engagement\'s value to the organization.'},
+    {r:'Partially Conforms',  rgb:[255,192,0],  sym:'✓', txt:'Partially conforms to the department procedures and IIA mandatory guidance. While the majority of procedures was adhered to, the engagement did not achieve some key elements of audit execution quality, partially impacting the audit\'s value to the organization.'},
+    {r:'Does Not Conform',    rgb:[255,0,0],    sym:'✗', txt:'Does not conform to the department procedures and IIA mandatory guidance. Significant deficiencies were noted. Immediate corrective action is required by Internal Audit management.'},
+  ];
+  defs.forEach(d=>{
+    chk(14);
+    doc.setFontSize(9); doc.setTextColor(...d.rgb); doc.setFont('helvetica','bold');
+    doc.text(`${d.sym} ${d.r}:`, ML, y);
+    const labelW=doc.getTextWidth(`${d.sym} ${d.r}: `);
+    doc.setTextColor(0); doc.setFont('helvetica','normal');
+    const txtLines=doc.splitTextToSize(d.txt, TW-labelW-2);
+    txtLines.forEach((l,i)=>{ if(i===0) doc.text(l, ML+labelW, y); else { y+=4.5; chk(5); doc.text(l, ML, y); } });
+    y+=7;
+  });
+
+  // Rating colour table
+  chk(30);
+  doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','bold');
+  doc.text('Rating Assignments Based on Individual Questions', ML, y); y+=5;
+  const swW=50, swH=7;
+  [['Generally Conforms',[146,208,80]],['Partially Conforms',[255,192,0]],['Does Not Conform',[255,0,0]]].forEach(([lbl,rgb])=>{
+    chk(swH+2);
+    doc.setFontSize(8.5); doc.setTextColor(0); doc.setFont('helvetica','normal');
+    doc.text(lbl, ML, y+5);
+    doc.setFillColor(...rgb); doc.rect(ML+55, y, swW, swH, 'F');
+    doc.setDrawColor(180); doc.setLineWidth(0.2); doc.rect(ML+55, y, swW, swH);
+    y+=swH+2;
+  });
+
+  // Footer on last page
+  addFooter();
+
+  const filename=`QA_Review_Report_${(eng.name||'Report').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
-  showToast('✓ PDF downloaded — ' + filename, 'green');
+  showToast('✓ PDF report downloaded','green');
 }
 
 function downloadReportJSON(payload, format){
