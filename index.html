@@ -3476,12 +3476,12 @@ async function wizExportReport(format){
   };
 
   if(format === 'word'){
-    generateInBrowserReport(payload, 'word');
+    await generateInBrowserReport(payload, 'word');
     return;
   }
 
   if(format === 'pdf'){
-    generateInBrowserPDF(payload);
+    await generateInBrowserPDF(payload);
     return;
   }
 }
@@ -3506,24 +3506,60 @@ async function callBackendAndDownload(payload, format){
   } catch(e){ return false; }
 }
 
-/* ── Truncate text to max N words ─────────────────────────────────────────── */
+/* ── Word-count truncation fallback (used only if AI summarise fails) ──────── */
 function summarise(text, maxWords){
   if(!text) return '';
   const words = String(text).trim().split(/\s+/);
   if(words.length <= maxWords) return text;
-  // trim to maxWords, end on a sentence boundary if possible
   let cut = words.slice(0, maxWords).join(' ');
   const lastDot = cut.lastIndexOf('.');
   if(lastDot > cut.length * 0.6) cut = cut.slice(0, lastDot + 1);
-  else cut = cut + '…';
+  else cut = cut.trimEnd().replace(/[,;:]$/, '') + '.';
   return cut;
 }
 
+/* ── AI summarisation: call Claude to produce a clean, complete-sounding summary ── */
+async function aiSummarise(text, role){
+  if(!text || text.trim().length === 0) return '';
+  const words = text.trim().split(/\s+/);
+  if(words.length <= 60) return text; // already short enough — no need to call API
+  try {
+    const res = await apiFetch('https://api.anthropic.com/v1/messages', {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `You are an internal audit report writer. Summarise the following ${role} in no more than 80 words. Write complete sentences. The summary must be self-contained, professional, and end properly — do not cut off mid-thought. Do not add any preamble, just output the summary.\n\n${text}`
+      }]
+    });
+    const data = await res.json();
+    return (data.content?.[0]?.text || text).trim();
+  } catch(e) {
+    // If API call fails, fall back to word-count truncation
+    return summarise(text, 100);
+  }
+}
+
+/* ── Summarise all findings before export (runs AI on description + rec fields) ── */
+async function summariseFindings(findings){
+  showToast('Summarising findings for report…', 'amber');
+  const result = [];
+  for(const f of findings){
+    const [finding, rec] = await Promise.all([
+      aiSummarise(f.finding || '', 'audit finding description'),
+      aiSummarise(f.rec     || '', 'audit recommendation'),
+    ]);
+    result.push({ ...f, finding, rec });
+  }
+  return result;
+}
+
 /* ── Generate report in-browser as Word-compatible HTML (EY format) ───────── */
-function generateInBrowserReport(payload, format){
+async function generateInBrowserReport(payload, format){
   const eng      = payload.engagement || {};
-  const findings = payload.findings   || [];
   const cl       = payload.checklist  || CHECKLIST;
+  const findings = await summariseFindings(payload.findings || []);
+  showToast('Building Word report…', 'amber');
   const PHASES   = ['Planning','Fieldwork','Reporting'];
   const reportDate = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
 
@@ -3687,8 +3723,8 @@ ${(()=>{
       const actItems=phExc.filter(f=>f.act===act);
       out+=`  <tr><td colspan="5" class="s4-act">${globalActIdx}.&nbsp;&nbsp;&nbsp;${esc(act)}</td></tr>\n`;
       actItems.forEach((f,fi)=>{
-        const desc=esc(summarise(f.finding||'',100));
-        const rec =esc(summarise(f.rec||'',100));
+        const desc=esc(f.finding||'');
+        const rec =esc(f.rec||'');
         const remarksHtml=f.remarks?`<br><br><strong style="color:#CC2200">Final Exception:</strong> ${esc(f.remarks)}`:'';
         out+=`  <tr>
     <td style="text-align:center;font-weight:bold">${String.fromCharCode(97+fi)}</td>
@@ -3734,10 +3770,11 @@ ${(()=>{
   showToast('✓ Word report downloaded — open in Microsoft Word','green');
 }
 
-function generateInBrowserPDF(payload){
+async function generateInBrowserPDF(payload){
   const eng      = payload.engagement || {};
-  const findings = payload.findings   || [];
   const cl       = payload.checklist  || CHECKLIST;
+  const findings = await summariseFindings(payload.findings || []);
+  showToast('Building PDF report…', 'amber');
   const PHASES   = ['Planning','Fieldwork','Reporting'];
   const reportDate = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
   const esc = s => String(s||'');
@@ -3958,8 +3995,8 @@ function generateInBrowserPDF(payload){
 
         const actItems=phExc.filter(f=>f.act===act);
         actItems.forEach((f,fi)=>{
-          const descTxt=summarise(f.finding||f.cpText||'', 100);
-          const recTxt =summarise(f.rec||'', 100);
+          const descTxt=f.finding||f.cpText||'';
+          const recTxt =f.rec||'';
           const issueTxt=f.cpText||f.act||'';
 
           const dLines  =doc.setFontSize(8)||doc.splitTextToSize(esc(descTxt),  colD-3);
@@ -5183,8 +5220,8 @@ async function exportQAReport(asgId,format){
       engagement:{name:a.name||'',entity:a.entity||'',auditor:a.auditor||'',period:a.period||'',engType:a.engType||'Internal Audit Review'},
       findings, checklist:cl,
     };
-    if(format==='word'){ generateInBrowserReport(payload,'word'); return; }
-    if(format==='pdf'){  generateInBrowserPDF(payload);           return; }
+    if(format==='word'){ await generateInBrowserReport(payload,'word'); return; }
+    if(format==='pdf'){  await generateInBrowserPDF(payload);           return; }
   }
   if(!window.docx){ showToast('Word library not available — try Excel export instead','amber'); return; }
 
