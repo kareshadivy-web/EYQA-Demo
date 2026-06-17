@@ -7898,7 +7898,12 @@ async function parseDocLibFile(file){
   } else if(ext==='txt'){
     out._text = new TextDecoder().decode(buf);
   } else if(ext==='pdf'){
-    out._text = '[PDF: ' + file.name + ' — text extraction limited in browser]';
+    try {
+      const result = await parsePDFBuffer(buf, file.name, null);
+      out._text = result.text || '';
+    } catch(e) {
+      out._text = '[PDF: ' + file.name + ' — could not extract text: ' + e.message + ']';
+    }
   } else {
     out._text = new TextDecoder().decode(buf).slice(0, 5000);
   }
