@@ -21,6 +21,7 @@
 <!-- Report export: docx.js (Word) + jsPDF (PDF) -->
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <style>
 /* ===================================================================
@@ -1251,6 +1252,7 @@ a { color: inherit; text-decoration: none; }
       <div class="nav-item"        data-page="checklist"   onclick="nav('checklist')">Checklist</div>
       <div class="nav-item"        data-page="vault"       onclick="nav('vault')">Vault</div>
       <div class="nav-item"        data-page="reports"     onclick="nav('reports')">Reports</div>
+      <div class="nav-item"        data-page="intelligence" onclick="nav('intelligence')">Intelligence</div>
       <div class="nav-item nav-guide" onclick="showClassificationGuide()" title="Learn the difference between Exception, Manual Review and Conforms">Guide</div>
     </nav>
 
@@ -2320,7 +2322,7 @@ function nav(page){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
   const ws=document.getElementById('page-content');
   ws.innerHTML='';
-  const pages={dashboard:renderDashboard,assignments:renderAssignments,documents:renderDocuments,checklist:renderChecklist,vault:renderVault,reports:renderReports,'asg-detail':renderAsgDetail};
+  const pages={dashboard:renderDashboard,assignments:renderAssignments,documents:renderDocuments,checklist:renderChecklist,vault:renderVault,reports:renderReports,'asg-detail':renderAsgDetail,intelligence:renderIntelligence};
   if(pages[page]) pages[page]();
   window.scrollTo(0,0);
 }
@@ -2695,6 +2697,88 @@ const CLIENTS = [
   { id:'CLT-002', name:'ABC Holdings PLC',         industry:'Asset Management',            reg:'FCA / PRA (UK)',  contact:'Sarah Jones',   email:'sjones@abc.com',    notes:'Mid-tier fund manager. Quarterly touchpoints.' },
   { id:'CLT-003', name:'Finserv Technologies Ltd', industry:'Fintech',                     reg:'FCA / PRA (UK)',  contact:'Raj Patel',     email:'rpatel@finserv.io', notes:'Fast-growing fintech. First audit engagement.' },
 ];
+
+/* ============================================================
+   360° CLIENT INTELLIGENCE — DATA MODEL
+   ============================================================ */
+
+// Historical engagements for intelligence (multi-year, per client)
+const INTEL_ENGAGEMENTS = [
+  // XYZ Limited (CLT-001) — 5 years
+  { id:'ENG-XYZ-2022', clientId:'CLT-001', client:'XYZ Limited', year:2022, fy:'FY2022', area:'Procurement',        riskScore:72, remediationRate:55, openFindings:8,  totalFindings:12, status:'completed' },
+  { id:'ENG-XYZ-2023', clientId:'CLT-001', client:'XYZ Limited', year:2023, fy:'FY2023', area:'Payroll & HR',       riskScore:68, remediationRate:60, openFindings:7,  totalFindings:11, status:'completed' },
+  { id:'ENG-XYZ-2024', clientId:'CLT-001', client:'XYZ Limited', year:2024, fy:'FY2024', area:'AML / Compliance',   riskScore:61, remediationRate:70, openFindings:5,  totalFindings:10, status:'completed' },
+  { id:'ENG-XYZ-2025', clientId:'CLT-001', client:'XYZ Limited', year:2025, fy:'FY2025', area:'Arrears Management', riskScore:58, remediationRate:75, openFindings:4,  totalFindings:9,  status:'completed', linkId:'AR-2025-AM-3' },
+  { id:'ENG-XYZ-2026', clientId:'CLT-001', client:'XYZ Limited', year:2026, fy:'FY2026', area:'Payroll & HR',       riskScore:64, remediationRate:50, openFindings:6,  totalFindings:10, status:'in-progress', linkId:'AR-2026-PAY-3' },
+  // ABC Holdings PLC (CLT-002) — 4 years
+  { id:'ENG-ABC-2023', clientId:'CLT-002', client:'ABC Holdings PLC', year:2023, fy:'FY2023', area:'IT General Controls', riskScore:55, remediationRate:80, openFindings:3,  totalFindings:9,  status:'completed' },
+  { id:'ENG-ABC-2024', clientId:'CLT-002', client:'ABC Holdings PLC', year:2024, fy:'FY2024', area:'Vendor Management',  riskScore:60, remediationRate:65, openFindings:5,  totalFindings:10, status:'completed' },
+  { id:'ENG-ABC-2025', clientId:'CLT-002', client:'ABC Holdings PLC', year:2025, fy:'FY2025', area:'Procurement',         riskScore:63, remediationRate:58, openFindings:6,  totalFindings:11, status:'completed' },
+  { id:'ENG-ABC-2026', clientId:'CLT-002', client:'ABC Holdings PLC', year:2026, fy:'FY2026', area:'Claims Processing',   riskScore:42, remediationRate:88, openFindings:2,  totalFindings:8,  status:'completed', linkId:'AR-2026-CLM-1' },
+  // Finserv Technologies Ltd (CLT-003) — 2 years
+  { id:'ENG-FIN-2025', clientId:'CLT-003', client:'Finserv Technologies Ltd', year:2025, fy:'FY2025', area:'IT General Controls', riskScore:78, remediationRate:40, openFindings:9,  totalFindings:13, status:'completed' },
+  { id:'ENG-FIN-2026', clientId:'CLT-003', client:'Finserv Technologies Ltd', year:2026, fy:'FY2026', area:'AML / Compliance',   riskScore:82, remediationRate:30, openFindings:11, totalFindings:14, status:'in-progress' },
+];
+
+// Control-area failure heatmap data  [clientId][fy][controlArea] = 'none'|'low'|'medium'|'high'|'critical'
+const INTEL_HEATMAP = {
+  'CLT-001': {
+    FY2022: { 'Access Controls':'high',   'Vendor Management':'critical', 'Financial Reporting':'medium', 'IT General Controls':'low',    'Payroll':'high',   'Procurement':'critical', 'Fixed Assets':'medium', 'AML / Compliance':'low',    'Governance':'medium' },
+    FY2023: { 'Access Controls':'medium', 'Vendor Management':'critical', 'Financial Reporting':'low',    'IT General Controls':'low',    'Payroll':'critical','Procurement':'high',     'Fixed Assets':'low',    'AML / Compliance':'medium', 'Governance':'high'   },
+    FY2024: { 'Access Controls':'medium', 'Vendor Management':'high',     'Financial Reporting':'low',    'IT General Controls':'medium', 'Payroll':'high',   'Procurement':'medium',   'Fixed Assets':'none',   'AML / Compliance':'critical','Governance':'high'  },
+    FY2025: { 'Access Controls':'low',    'Vendor Management':'high',     'Financial Reporting':'none',   'IT General Controls':'medium', 'Payroll':'medium', 'Procurement':'medium',   'Fixed Assets':'none',   'AML / Compliance':'high',   'Governance':'medium'},
+    FY2026: { 'Access Controls':'low',    'Vendor Management':'medium',   'Financial Reporting':'none',   'IT General Controls':'medium', 'Payroll':'critical','Procurement':'medium',  'Fixed Assets':'none',   'AML / Compliance':'high',   'Governance':'high'  },
+  },
+  'CLT-002': {
+    FY2023: { 'Access Controls':'low',    'Vendor Management':'medium',   'Financial Reporting':'low',    'IT General Controls':'medium', 'Payroll':'none',   'Procurement':'low',      'Fixed Assets':'none',   'AML / Compliance':'none',   'Governance':'low'   },
+    FY2024: { 'Access Controls':'medium', 'Vendor Management':'high',     'Financial Reporting':'low',    'IT General Controls':'high',   'Payroll':'low',    'Procurement':'medium',   'Fixed Assets':'low',    'AML / Compliance':'low',    'Governance':'medium'},
+    FY2025: { 'Access Controls':'medium', 'Vendor Management':'critical', 'Financial Reporting':'medium', 'IT General Controls':'high',   'Payroll':'low',    'Procurement':'critical', 'Fixed Assets':'medium', 'AML / Compliance':'low',    'Governance':'medium'},
+    FY2026: { 'Access Controls':'low',    'Vendor Management':'medium',   'Financial Reporting':'low',    'IT General Controls':'medium', 'Payroll':'none',   'Procurement':'low',      'Fixed Assets':'none',   'AML / Compliance':'none',   'Governance':'low'   },
+  },
+  'CLT-003': {
+    FY2025: { 'Access Controls':'critical','Vendor Management':'high',    'Financial Reporting':'medium', 'IT General Controls':'critical','Payroll':'medium','Procurement':'low',      'Fixed Assets':'low',    'AML / Compliance':'high',   'Governance':'critical'},
+    FY2026: { 'Access Controls':'critical','Vendor Management':'high',    'Financial Reporting':'high',   'IT General Controls':'critical','Payroll':'high',  'Procurement':'medium',   'Fixed Assets':'medium', 'AML / Compliance':'critical','Governance':'critical'},
+  },
+};
+
+// Extended findings with intelligence metadata
+const INTEL_FINDINGS = [
+  // XYZ Limited — multi-year findings
+  { id:'F-001', clientId:'CLT-001', engId:'ENG-XYZ-2022', controlArea:'Vendor Management',    dept:'Procurement',     firstRaised:'2022-03-15', riskLevel:'High',     rootCause:'Process',    status:'Re-opened',   managementResponse:'Vendor onboarding SOP to be updated.', committedClose:'2022-09-30', actualClose:null,         recurrenceLink:null,    finding:'Vendor onboarding lacks documented approval chain. Purchase orders raised without three-quote compliance.', rec:'Implement mandatory three-quote process for all vendors above threshold.' },
+  { id:'F-002', clientId:'CLT-001', engId:'ENG-XYZ-2022', controlArea:'Procurement',          dept:'Finance',         firstRaised:'2022-03-20', riskLevel:'High',     rootCause:'Governance', status:'Re-opened',   managementResponse:'CFO to enforce purchase order controls.', committedClose:'2022-09-30', actualClose:null,         recurrenceLink:null,    finding:'Purchase orders raised retrospectively after goods/services received in 38% of sampled transactions.', rec:'Implement system-enforced PO-before-delivery controls.' },
+  { id:'F-003', clientId:'CLT-001', engId:'ENG-XYZ-2022', controlArea:'Access Controls',      dept:'IT',              firstRaised:'2022-04-01', riskLevel:'Medium',   rootCause:'Technology', status:'Closed',      managementResponse:'IT to revoke legacy accounts.', committedClose:'2022-06-30', actualClose:'2022-07-15', recurrenceLink:null,    finding:'42 inactive user accounts with active system access identified.', rec:'Implement quarterly access recertification process.' },
+  { id:'F-004', clientId:'CLT-001', engId:'ENG-XYZ-2022', controlArea:'Payroll',              dept:'HR',              firstRaised:'2022-04-10', riskLevel:'High',     rootCause:'Process',    status:'Re-opened',   managementResponse:'HR to strengthen payroll authorisation.', committedClose:'2022-09-30', actualClose:null,         recurrenceLink:null,    finding:'Payroll changes processed without dual authorisation for 22% of sampled payroll runs.', rec:'Mandate dual-sign-off for all payroll amendments above £500.' },
+  { id:'F-005', clientId:'CLT-001', engId:'ENG-XYZ-2023', controlArea:'Payroll',              dept:'HR',              firstRaised:'2022-04-10', riskLevel:'High',     rootCause:'Process',    status:'Re-opened',   managementResponse:'HR Director to enforce dual authorisation policy.', committedClose:'2023-09-30', actualClose:null,         recurrenceLink:'F-004', finding:'Payroll dual-authorisation control remains non-operational. 31% of payroll amendments processed without second approver.', rec:'Automate payroll authorisation workflow to prevent bypass.' },
+  { id:'F-006', clientId:'CLT-001', engId:'ENG-XYZ-2023', controlArea:'Vendor Management',    dept:'Procurement',     firstRaised:'2022-03-15', riskLevel:'High',     rootCause:'Process',    status:'Open',        managementResponse:'Head of Procurement to implement SOP review.', committedClose:'2023-06-30', actualClose:null,         recurrenceLink:'F-001', finding:'Vendor onboarding approval chain still not documented. 3 new vendors onboarded without compliance checks.', rec:'Mandate vendor risk assessment before onboarding approval.' },
+  { id:'F-007', clientId:'CLT-001', engId:'ENG-XYZ-2023', controlArea:'Governance',           dept:'Management',      firstRaised:'2023-05-01', riskLevel:'High',     rootCause:'Governance', status:'Open',        managementResponse:'Board to mandate audit committee oversight.', committedClose:'2023-12-31', actualClose:null,         recurrenceLink:null,    finding:'No audit committee oversight of internal audit quality assurance function. Board minutes show no IA quality agenda items.', rec:'Establish quarterly audit committee review of IA quality metrics.' },
+  { id:'F-008', clientId:'CLT-001', engId:'ENG-XYZ-2024', controlArea:'AML / Compliance',     dept:'Compliance',      firstRaised:'2024-02-15', riskLevel:'Critical', rootCause:'Governance', status:'Open',        managementResponse:'MLRO to implement enhanced monitoring.', committedClose:'2024-06-30', actualClose:null,         recurrenceLink:null,    finding:'Transaction monitoring thresholds not reviewed since 2021. 12 high-value transactions flagged retrospectively with 90+ day delays.', rec:'Implement automated real-time transaction monitoring with monthly threshold review.' },
+  { id:'F-009', clientId:'CLT-001', engId:'ENG-XYZ-2024', controlArea:'Payroll',              dept:'HR',              firstRaised:'2022-04-10', riskLevel:'High',     rootCause:'Process',    status:'Open',        managementResponse:'HR Director committed to system upgrade.', committedClose:'2024-12-31', actualClose:null,         recurrenceLink:'F-005', finding:'Payroll dual-authorisation failure persists for third consecutive year. Systemic bypass via manual override documented.', rec:'Escalate to CEO for immediate remediation; system control enforcement required.' },
+  { id:'F-010', clientId:'CLT-001', engId:'ENG-XYZ-2025', controlArea:'Vendor Management',    dept:'Procurement',     firstRaised:'2022-03-15', riskLevel:'High',     rootCause:'Process',    status:'Open',        managementResponse:'Procurement SOP update in progress.', committedClose:'2025-12-31', actualClose:null,         recurrenceLink:'F-006', finding:'Vendor onboarding control weakness recurring for 4th year. Board-level escalation not yet actioned.', rec:'Consider management letter to Board. Immediate freeze on vendor onboarding pending control fix.' },
+  { id:'F-011', clientId:'CLT-001', engId:'ENG-XYZ-2025', controlArea:'AML / Compliance',     dept:'Compliance',      firstRaised:'2024-02-15', riskLevel:'Critical', rootCause:'Governance', status:'Open',        managementResponse:'Enhanced monitoring project underway.', committedClose:'2025-09-30', actualClose:null,         recurrenceLink:'F-008', finding:'AML transaction monitoring upgrade delayed by 18 months. Regulator correspondence unaddressed.', rec:'Immediate escalation to Board. Regulatory breach risk material.' },
+  { id:'F-012', clientId:'CLT-001', engId:'ENG-XYZ-2026', controlArea:'Payroll',              dept:'HR',              firstRaised:'2022-04-10', riskLevel:'Critical', rootCause:'Process',    status:'Open',        managementResponse:'System implementation vendor engaged.', committedClose:'2026-09-30', actualClose:null,         recurrenceLink:'F-009', finding:'Payroll authorisation control failure now in 5th year. Regulatory risk elevated. System fix committed but not delivered.', rec:'Board-level escalation. External specialist engagement recommended.' },
+  // ABC Holdings PLC — findings
+  { id:'F-020', clientId:'CLT-002', engId:'ENG-ABC-2023', controlArea:'IT General Controls',  dept:'IT',              firstRaised:'2023-06-01', riskLevel:'Medium',   rootCause:'Technology', status:'Closed',      managementResponse:'Patch management cycle to be improved.', committedClose:'2023-09-30', actualClose:'2023-10-05', recurrenceLink:null,    finding:'Patch management cycle exceeds 90-day threshold for critical security patches.', rec:'Implement automated patch deployment with 30-day maximum cycle.' },
+  { id:'F-021', clientId:'CLT-002', engId:'ENG-ABC-2024', controlArea:'Vendor Management',    dept:'Procurement',     firstRaised:'2024-01-15', riskLevel:'High',     rootCause:'Process',    status:'Open',        managementResponse:'Procurement to revise vendor SLA framework.', committedClose:'2024-12-31', actualClose:null,         recurrenceLink:null,    finding:'Vendor SLA monitoring not systematically tracked. 4 of 9 key vendors breached SLA terms without documented penalty notices.', rec:'Implement vendor performance dashboard with automated SLA breach alerts.' },
+  { id:'F-022', clientId:'CLT-002', engId:'ENG-ABC-2025', controlArea:'Vendor Management',    dept:'Procurement',     firstRaised:'2024-01-15', riskLevel:'High',     rootCause:'Process',    status:'Open',        managementResponse:'New vendor management system in evaluation.', committedClose:'2025-06-30', actualClose:null,         recurrenceLink:'F-021', finding:'Vendor SLA monitoring control not remediated. 7 of 12 vendors now in breach with no formal management response documented.', rec:'Immediate implementation of vendor performance tracking. Escalate to CFO.' },
+  { id:'F-023', clientId:'CLT-002', engId:'ENG-ABC-2025', controlArea:'Procurement',          dept:'Finance',         firstRaised:'2025-02-01', riskLevel:'High',     rootCause:'Governance', status:'Open',        managementResponse:'Finance director reviewing procurement policy.', committedClose:'2025-09-30', actualClose:null,         recurrenceLink:null,    finding:'Procurement policy last updated in 2021. Thresholds do not reflect current spending patterns.', rec:'Update procurement policy to reflect current risk appetite and spending authority levels.' },
+  // Finserv Technologies
+  { id:'F-030', clientId:'CLT-003', engId:'ENG-FIN-2025', controlArea:'Access Controls',      dept:'IT',              firstRaised:'2025-03-01', riskLevel:'Critical', rootCause:'Technology', status:'Open',        managementResponse:'IT Head to implement privileged access management.', committedClose:'2025-09-30', actualClose:null,         recurrenceLink:null,    finding:'No privileged access management (PAM) solution in place. Admin credentials shared across 6 IT staff.', rec:'Implement PAM solution with individual privileged accounts and session recording within 90 days.' },
+  { id:'F-031', clientId:'CLT-003', engId:'ENG-FIN-2025', controlArea:'IT General Controls',  dept:'IT',              firstRaised:'2025-03-15', riskLevel:'Critical', rootCause:'Technology', status:'Open',        managementResponse:'CTO to present remediation roadmap.', committedClose:'2025-12-31', actualClose:null,         recurrenceLink:null,    finding:'No formal IT disaster recovery plan. Last DR test conducted in 2022 with no documented results.', rec:'Conduct DR test within 60 days and establish annual DR testing cycle.' },
+  { id:'F-032', clientId:'CLT-003', engId:'ENG-FIN-2025', controlArea:'AML / Compliance',     dept:'Compliance',      firstRaised:'2025-04-01', riskLevel:'High',     rootCause:'People',     status:'Open',        managementResponse:'Compliance team to undergo training.', committedClose:'2025-09-30', actualClose:null,         recurrenceLink:null,    finding:'AML training completion rate at 44%. 8 of 18 compliance staff have not completed mandatory AML certification.', rec:'Mandate AML certification completion within 30 days. Suspend access for non-compliant staff.' },
+  { id:'F-033', clientId:'CLT-003', engId:'ENG-FIN-2026', controlArea:'Access Controls',      dept:'IT',              firstRaised:'2025-03-01', riskLevel:'Critical', rootCause:'Technology', status:'Open',        managementResponse:'PAM solution procurement delayed by budget constraints.', committedClose:'2026-06-30', actualClose:null,         recurrenceLink:'F-030', finding:'PAM solution still not implemented — recurring from FY2025. Budget approved but vendor not yet selected.', rec:'Immediate vendor selection. Board to approve emergency budget if needed.' },
+  { id:'F-034', clientId:'CLT-003', engId:'ENG-FIN-2026', controlArea:'Governance',           dept:'Management',      firstRaised:'2026-01-15', riskLevel:'Critical', rootCause:'Governance', status:'Open',        managementResponse:'CEO to review governance framework.', committedClose:'2026-12-31', actualClose:null,         recurrenceLink:null,    finding:'No board-level risk committee. Risk appetite statement not formally approved by the board.', rec:'Establish board risk committee with quarterly cadence and formal risk appetite statement sign-off.' },
+  { id:'F-035', clientId:'CLT-003', engId:'ENG-FIN-2026', controlArea:'AML / Compliance',     dept:'Compliance',      firstRaised:'2025-04-01', riskLevel:'Critical', rootCause:'People',     status:'Open',        managementResponse:'Compliance training re-enrolled for FY2026 cohort.', committedClose:'2026-06-30', actualClose:null,         recurrenceLink:'F-032', finding:'AML training completion still at 51% after 12 months. Systemic staffing issue — high turnover in compliance team.', rec:'Revise compliance staffing model. Consider compliance outsourcing given persistent capability gap.' },
+];
+
+// Remediation velocity: avg days from raised to closed, per year, per client
+const INTEL_VELOCITY = {
+  'CLT-001': { FY2022:95, FY2023:110, FY2024:130, FY2025:148, FY2026:null },
+  'CLT-002': { FY2023:62, FY2024:78,  FY2025:95,  FY2026:55  },
+  'CLT-003': { FY2025:null, FY2026:null },
+};
+
+// State for intelligence view
+S.intel = { clientId:'CLT-001', yrFrom:2022, yrTo:2026, tab:'overview', drillArea:null, drillYear:null };
 
 /* ============================================================
    FILENAME → DOCTYPE inference
@@ -8645,6 +8729,858 @@ function refreshApiKeyIndicator(){
 }
 // Run on page load
 document.addEventListener('DOMContentLoaded', refreshApiKeyIndicator);
+
+/* ============================================================
+   360° CLIENT INTELLIGENCE — RENDER & LOGIC
+   ============================================================ */
+function intelEngagements(clientId, yrFrom, yrTo){
+  return INTEL_ENGAGEMENTS.filter(e=>e.clientId===clientId && e.year>=yrFrom && e.year<=yrTo);
+}
+function intelFindings(clientId){
+  return INTEL_FINDINGS.filter(f=>f.clientId===clientId);
+}
+function intelHealthScore(engs){
+  if(!engs.length) return 0;
+  const latest = engs[engs.length-1];
+  return 100 - latest.riskScore;
+}
+function intelRecurring(findings){
+  return findings.filter(f=>f.recurrenceLink);
+}
+function intelChronic(findings){
+  return findings.filter(f=>{
+    if(!f.firstRaised) return false;
+    const yrs=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365);
+    return yrs>2 && f.status!=='Closed';
+  });
+}
+function intelRemRate(engs){
+  if(!engs.length) return 0;
+  return Math.round(engs.reduce((s,e)=>s+e.remediationRate,0)/engs.length);
+}
+function intelChronicControls(clientId, yrFrom, yrTo){
+  const hm=INTEL_HEATMAP[clientId]||{};
+  const fys=Object.keys(hm).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=yrFrom&&y<=yrTo;}).sort();
+  const areas=['Access Controls','Vendor Management','Financial Reporting','IT General Controls','Payroll','Procurement','Fixed Assets','AML / Compliance','Governance'];
+  let chronic=0;
+  areas.forEach(area=>{
+    let streak=0, maxStreak=0;
+    fys.forEach(fy=>{
+      if(hm[fy]&&hm[fy][area]==='critical'){ streak++; maxStreak=Math.max(maxStreak,streak); } else streak=0;
+    });
+    if(maxStreak>=3) chronic++;
+  });
+  return chronic;
+}
+function intelNegligentDepts(findings){
+  const depts={};
+  findings.forEach(f=>{
+    if(!depts[f.dept]) depts[f.dept]={raised:0,closed:0,open:0,ages:[]};
+    depts[f.dept].raised++;
+    if(f.status==='Closed'){ depts[f.dept].closed++; }
+    else { depts[f.dept].open++; if(f.firstRaised){ const a=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365); depts[f.dept].ages.push(a); } }
+  });
+  return Object.entries(depts).filter(([,d])=>{
+    const rate=d.raised?Math.round(d.closed/d.raised*100):100;
+    return rate<40;
+  }).length;
+}
+
+function renderIntelligence(){
+  const ci=S.intel;
+  const allClients=CLIENTS;
+  const selClient=allClients.find(c=>c.id===ci.clientId)||allClients[0];
+  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
+  const findings=intelFindings(ci.clientId);
+  const healthScore=intelHealthScore(engs);
+  const remRate=intelRemRate(engs);
+  const recurringCt=intelRecurring(findings).length;
+  const chronicCtrl=intelChronicControls(ci.clientId,ci.yrFrom,ci.yrTo);
+  const negDepts=intelNegligentDepts(findings);
+
+  const tabs=[
+    {id:'overview',   label:'Overview'},
+    {id:'heatmap',    label:'Control Heatmap'},
+    {id:'findings',   label:'Recurring Findings'},
+    {id:'depts',      label:'Dept Scorecard'},
+    {id:'rootcause',  label:'Root Cause'},
+    {id:'velocity',   label:'Velocity'},
+    {id:'flags',      label:'Risk Flags'},
+    {id:'narrative',  label:'AI Narrative'},
+  ];
+
+  const healthColor = healthScore>=70?'#1A7A4A':healthScore>=50?'#D97706':'#CC2200';
+  const remColor    = remRate>=70?'#1A7A4A':remRate>=40?'#D97706':'#CC2200';
+
+  let html=`
+<div style="padding:24px 28px;max-width:1400px;margin:0 auto">
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:20px;font-weight:800;color:var(--t1);letter-spacing:-0.3px">360° Client Intelligence</div>
+      <div style="font-size:12px;color:var(--t3);margin-top:3px">Longitudinal risk analysis · Chronic control weaknesses · Remediation intelligence</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <select onchange="S.intel.clientId=this.value;S.intel.tab='overview';nav('intelligence')"
+        style="padding:7px 10px;border:1px solid var(--border2);border-radius:5px;font-size:12px;font-weight:600;background:var(--bg2);color:var(--t1)">
+        ${allClients.map(c=>`<option value="${c.id}"${c.id===ci.clientId?' selected':''}>${c.name}</option>`).join('')}
+      </select>
+      <select onchange="S.intel.yrFrom=+this.value;nav('intelligence')"
+        style="padding:7px 8px;border:1px solid var(--border2);border-radius:5px;font-size:12px;background:var(--bg2);color:var(--t1)">
+        ${[2021,2022,2023,2024,2025,2026].map(y=>`<option value="${y}"${y===ci.yrFrom?' selected':''}>From ${y}</option>`).join('')}
+      </select>
+      <select onchange="S.intel.yrTo=+this.value;nav('intelligence')"
+        style="padding:7px 8px;border:1px solid var(--border2);border-radius:5px;font-size:12px;background:var(--bg2);color:var(--t1)">
+        ${[2022,2023,2024,2025,2026,2027].map(y=>`<option value="${y}"${y===ci.yrTo?' selected':''}>To ${y}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <!-- 5 KPI cards -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
+    ${[
+      { label:'Client Health Score', value:healthScore+'%',  sub:'Overall composite', color:healthColor,  icon:'❤' },
+      { label:'Recurring Findings',  value:recurringCt,      sub:'Repeat across years', color:'#CC2200',  icon:'↺' },
+      { label:'Avg Remediation Rate',value:remRate+'%',      sub:'Across all years',  color:remColor,     icon:'✓' },
+      { label:'Chronic Controls',    value:chronicCtrl,      sub:'Critical 3+ yrs',  color:chronicCtrl>0?'#CC2200':'#1A7A4A', icon:'⚠' },
+      { label:'Dept Negligence Flags',value:negDepts,        sub:'Below 40% rate',   color:negDepts>0?'#CC2200':'#1A7A4A',    icon:'🚨' },
+    ].map(k=>`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;border-top:3px solid ${k.color}">
+      <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">${k.icon} ${k.label}</div>
+      <div style="font-size:26px;font-weight:900;color:${k.color};line-height:1">${k.value}</div>
+      <div style="font-size:10px;color:var(--t4);margin-top:4px">${k.sub}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;overflow-x:auto">
+    ${tabs.map(t=>`<div onclick="S.intel.tab='${t.id}';renderIntelligenceTab()"
+      style="padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;${ci.tab===t.id?'border-bottom-color:#FFE600;color:var(--t1)':'color:var(--t3)'}"
+      id="itab-${t.id}">${t.label}</div>`).join('')}
+  </div>
+
+  <!-- Tab content -->
+  <div id="intel-tab-content"></div>
+</div>`;
+
+  document.getElementById('page-content').innerHTML=html;
+  renderIntelligenceTab();
+}
+
+function renderIntelligenceTab(){
+  const ci=S.intel;
+  const t=ci.tab;
+  // update tab styling
+  document.querySelectorAll('[id^="itab-"]').forEach(el=>{
+    const active=el.id==='itab-'+t;
+    el.style.borderBottomColor=active?'#FFE600':'transparent';
+    el.style.color=active?'var(--t1)':'var(--t3)';
+  });
+  const container=document.getElementById('intel-tab-content');
+  if(!container)return;
+  if(t==='overview')   renderIntelOverview(container);
+  else if(t==='heatmap')   renderIntelHeatmap(container);
+  else if(t==='findings')  renderIntelFindings(container);
+  else if(t==='depts')     renderIntelDepts(container);
+  else if(t==='rootcause') renderIntelRootCause(container);
+  else if(t==='velocity')  renderIntelVelocity(container);
+  else if(t==='flags')     renderIntelFlags(container);
+  else if(t==='narrative') renderIntelNarrative(container);
+}
+
+/* ── Feature 1: Client health timeline ─────────────────────── */
+function renderIntelOverview(container){
+  const ci=S.intel;
+  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 1 — Client Health Timeline</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Longitudinal risk score, remediation rate, and cumulative open findings across all engagements. Click any point to open engagement detail.</div>
+  <div style="position:relative;height:300px"><canvas id="chart-timeline"></canvas></div>
+</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:12px">Engagement History</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:var(--bg3)">
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">FY</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Area</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Risk Score</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Remediation %</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Open Findings</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Status</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Trend</th>
+    </tr></thead>
+    <tbody>
+    ${engs.map((e,i)=>{
+      const prev=engs[i-1];
+      const trend=prev?(e.riskScore<prev.riskScore?'<span style="color:#1A7A4A">▼ Improving</span>':e.riskScore>prev.riskScore?'<span style="color:#CC2200">▲ Worsening</span>':'<span style="color:#D97706">→ Stable</span>'):'—';
+      const rc=e.riskScore>=70?'#CC2200':e.riskScore>=50?'#D97706':'#1A7A4A';
+      const link=e.linkId?`<a href="#" onclick="S.currentAsgId='${e.linkId}';nav('asg-detail');return false" style="color:var(--blue);text-decoration:none;font-weight:700">Open ↗</a>`:'—';
+      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="${e.linkId?`S.currentAsgId='${e.linkId}';nav('asg-detail')`:''}">
+        <td style="padding:8px 10px;font-weight:700">${e.fy}</td>
+        <td style="padding:8px 10px;color:var(--t2)">${e.area}</td>
+        <td style="padding:8px 10px;text-align:center;font-weight:800;color:${rc}">${e.riskScore}</td>
+        <td style="padding:8px 10px;text-align:center">${e.remediationRate}%</td>
+        <td style="padding:8px 10px;text-align:center">${e.openFindings}</td>
+        <td style="padding:8px 10px;text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${e.status==='completed'?'rgba(26,122,74,.1)':'rgba(217,119,6,.1)'};color:${e.status==='completed'?'#1A7A4A':'#D97706'}">${e.status}</span></td>
+        <td style="padding:8px 10px;text-align:center;font-size:11px">${trend}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>
+</div>`;
+
+  setTimeout(()=>{
+    const ctx=document.getElementById('chart-timeline');
+    if(!ctx||!window.Chart)return;
+    const labels=engs.map(e=>e.fy);
+    let cum=0;
+    const cumOpen=engs.map(e=>{cum+=e.openFindings;return cum;});
+    new Chart(ctx,{
+      type:'line',
+      data:{
+        labels,
+        datasets:[
+          { label:'Risk Score',       data:engs.map(e=>e.riskScore),     borderColor:'#CC2200', backgroundColor:'rgba(204,34,0,.07)',  tension:.35, yAxisID:'y', pointRadius:6, pointHoverRadius:9, fill:true },
+          { label:'Remediation %',    data:engs.map(e=>e.remediationRate),borderColor:'#1A7A4A', backgroundColor:'rgba(26,122,74,.07)', tension:.35, yAxisID:'y', pointRadius:6, pointHoverRadius:9, fill:true },
+          { label:'Cumulative Open',  data:cumOpen,                        borderColor:'#D97706', backgroundColor:'rgba(217,119,6,.07)', tension:.35, yAxisID:'y2',pointRadius:6, pointHoverRadius:9, fill:false, borderDash:[5,3] },
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{ legend:{position:'top',labels:{font:{size:11},padding:14}}, tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y}${ctx.datasetIndex===0||ctx.datasetIndex===1?'%':''}`}} },
+        scales:{
+          y:{ type:'linear', position:'left', min:0, max:100, title:{display:true,text:'Score / Rate (%)',font:{size:10}} },
+          y2:{ type:'linear', position:'right', min:0, title:{display:true,text:'Cumulative Open',font:{size:10}}, grid:{drawOnChartArea:false} },
+          x:{ grid:{color:'rgba(0,0,0,.05)'} }
+        },
+        onClick:(evt,els)=>{
+          if(!els.length)return;
+          const e=engs[els[0].index];
+          if(e.linkId){S.currentAsgId=e.linkId;nav('asg-detail');}
+        }
+      }
+    });
+
+    // Auto-flag deteriorating trend
+    if(engs.length>=3){
+      const last3=engs.slice(-3);
+      const worsening=last3.every((e,i)=>i===0||e.riskScore>=last3[i-1].riskScore);
+      if(worsening){
+        const flag=document.createElement('div');
+        flag.style.cssText='margin-top:12px;padding:10px 14px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:11px;font-weight:700;color:#CC2200;display:flex;align-items:center;gap:8px';
+        flag.innerHTML='🚨 <span>Deteriorating trend detected over 3+ years — this client is auto-flagged as <strong>HIGH RISK — SYSTEMIC</strong></span>';
+        document.querySelector('#intel-tab-content')?.appendChild(flag);
+      }
+    }
+  },50);
+}
+
+/* ── Feature 2: Control Weakness Heatmap ───────────────────── */
+function renderIntelHeatmap(container){
+  const ci=S.intel;
+  const hm=INTEL_HEATMAP[ci.clientId]||{};
+  const fys=Object.keys(hm).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=ci.yrFrom&&y<=ci.yrTo;}).sort();
+  const areas=['Access Controls','Vendor Management','Financial Reporting','IT General Controls','Payroll','Procurement','Fixed Assets','AML / Compliance','Governance'];
+  const lvlColor={'none':'#E8E8E8','low':'#BEF0CF','medium':'#FDE68A','high':'#FDBA74','critical':'#FCA5A5'};
+  const lvlText= {'none':'None',     'low':'Low',     'medium':'Medium',  'high':'High',    'critical':'Critical'};
+
+  // find chronic areas
+  const chronicAreas=new Set();
+  areas.forEach(area=>{
+    let streak=0;
+    fys.forEach(fy=>{ if(hm[fy]&&hm[fy][area]==='critical'){streak++; if(streak>=3) chronicAreas.add(area);} else streak=0; });
+  });
+
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px;overflow-x:auto">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 2 — Control Weakness Heatmap</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Failure frequency by control area and year. Click any cell to drill into findings. Cells with Critical for 3+ years are auto-flagged as chronic.</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    ${Object.entries(lvlColor).map(([k,c])=>`<span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--t2)"><span style="width:14px;height:14px;border-radius:3px;background:${c};border:1px solid rgba(0,0,0,.1);display:inline-block"></span>${lvlText[k]}</span>`).join('')}
+    <span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#CC2200">🔁 Chronic (Critical 3+ yrs)</span>
+  </div>
+  <table style="border-collapse:collapse;min-width:600px">
+    <thead><tr>
+      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--t2);background:var(--bg3);border:1px solid var(--border);min-width:160px">Control Area</th>
+      ${fys.map(fy=>`<th style="padding:8px 14px;text-align:center;font-size:11px;font-weight:700;color:var(--t2);background:var(--bg3);border:1px solid var(--border);min-width:90px">${fy}</th>`).join('')}
+    </tr></thead>
+    <tbody>
+    ${areas.map(area=>{
+      const isChronic=chronicAreas.has(area);
+      return `<tr>
+        <td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--t1);border:1px solid var(--border);background:${isChronic?'rgba(204,34,0,.06)':'var(--bg2)'}">
+          ${isChronic?'🔁 ':''}${area}${isChronic?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;background:#CC2200;color:#fff;border-radius:8px;font-weight:700">CHRONIC</span>':''}
+        </td>
+        ${fys.map(fy=>{
+          const lvl=(hm[fy]&&hm[fy][area])||'none';
+          return `<td onclick="S.intel.drillArea='${area.replace(/'/g,"\\'")}';S.intel.drillYear='${fy}';renderIntelHeatmapDrill()"
+            style="padding:10px;text-align:center;font-size:10px;font-weight:700;border:1px solid var(--border);background:${lvlColor[lvl]};cursor:pointer;transition:opacity .15s"
+            onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'"
+            title="Click to drill into ${area} — ${fy}">
+            ${lvlText[lvl]}
+          </td>`;
+        }).join('')}
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>
+</div>
+<div id="heatmap-drill" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px"></div>`;
+}
+
+function renderIntelHeatmapDrill(){
+  const ci=S.intel;
+  const area=ci.drillArea, fy=ci.drillYear;
+  const yr=parseInt((fy||'').replace('FY',''));
+  const findings=intelFindings(ci.clientId).filter(f=>f.controlArea===area && f.engId && INTEL_ENGAGEMENTS.find(e=>e.id===f.engId&&e.year===yr));
+  const drill=document.getElementById('heatmap-drill');
+  if(!drill)return;
+  drill.style.display='block';
+  drill.innerHTML=`
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1)">Drill-down: ${esc(area)} — ${esc(fy)}</div>
+  <button onclick="document.getElementById('heatmap-drill').style.display='none'" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;font-size:11px">✕ Close</button>
+</div>
+${findings.length===0?`<div style="color:var(--t3);font-size:12px">No specific findings recorded for this cell.</div>`:
+  findings.map(f=>`
+<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;border-left:3px solid ${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">
+  <div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:4px">${esc(f.finding)}</div>
+  <div style="font-size:10px;color:var(--t3)">Dept: <strong>${esc(f.dept)}</strong> · Risk: <strong style="color:${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">${f.riskLevel}</strong> · Status: <strong>${f.status}</strong></div>
+</div>`).join('')}`;
+  drill.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ── Feature 3: Recurring Findings Tracker ─────────────────── */
+function renderIntelFindings(container){
+  const ci=S.intel;
+  const findings=intelFindings(ci.clientId);
+  // Build recurrence chains
+  const recMap={};
+  findings.forEach(f=>{
+    const root=f.recurrenceLink||f.id;
+    if(!recMap[root]) recMap[root]=[];
+    recMap[root].push(f);
+  });
+  // Flatten: one row per "base" finding with recurrence count
+  const rows=[];
+  const seen=new Set();
+  findings.forEach(f=>{
+    const root=f.recurrenceLink||f.id;
+    if(seen.has(root))return;
+    seen.add(root);
+    const chain=(recMap[root]||[f]);
+    const count=chain.length;
+    const firstDate=chain.reduce((min,x)=>!min||x.firstRaised<min?x.firstRaised:min,null);
+    const ageYrs=firstDate?((new Date()-new Date(firstDate))/(1000*60*60*24*365)).toFixed(1):null;
+    const allClosed=chain.every(x=>x.status==='Closed');
+    const hasReopened=chain.some(x=>x.status==='Re-opened');
+    rows.push({...f, recurrenceCount:count, firstRaised:firstDate, ageYrs, allClosed, hasReopened, latestStatus:chain[chain.length-1].status});
+  });
+  rows.sort((a,b)=>b.recurrenceCount-a.recurrenceCount||b.ageYrs-a.ageYrs);
+
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;overflow-x:auto">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 3 — Recurring Findings Tracker</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Findings that have re-appeared across engagements, with full recurrence chain and age tracking.</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:var(--bg3)">
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2);min-width:220px">Finding</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Control Area</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">First Raised</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Recurrences</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Open Age (yrs)</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Department</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Status</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Badges</th>
+    </tr></thead>
+    <tbody>
+    ${rows.map(f=>{
+      const chronic=f.ageYrs>2&&!f.allClosed;
+      const escalated=f.hasReopened;
+      const statusColor=f.latestStatus==='Closed'?'#1A7A4A':f.latestStatus==='Open'?'#CC2200':f.latestStatus==='Re-opened'?'#CC2200':'#D97706';
+      return `<tr style="border-bottom:1px solid var(--border);${chronic?'background:rgba(204,34,0,.03)':''}">
+        <td style="padding:9px 10px;color:var(--t1);line-height:1.4">${esc(f.finding.length>90?f.finding.slice(0,90)+'…':f.finding)}</td>
+        <td style="padding:9px 10px;color:var(--t2)">${esc(f.controlArea)}</td>
+        <td style="padding:9px 10px;text-align:center;color:var(--t3)">${f.firstRaised||'—'}</td>
+        <td style="padding:9px 10px;text-align:center;font-weight:900;color:${f.recurrenceCount>=3?'#CC2200':f.recurrenceCount>=2?'#D97706':'var(--t2)'}">${f.recurrenceCount}</td>
+        <td style="padding:9px 10px;text-align:center;font-weight:700;color:${f.ageYrs>2?'#CC2200':'var(--t2)'}">${f.allClosed?'Closed':f.ageYrs||'—'}</td>
+        <td style="padding:9px 10px;color:var(--t2)">${esc(f.dept)}</td>
+        <td style="padding:9px 10px;text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${statusColor}22;color:${statusColor}">${f.latestStatus}</span></td>
+        <td style="padding:9px 10px;text-align:center;white-space:nowrap">
+          ${chronic?'<span style="padding:2px 7px;background:#CC2200;color:#fff;border-radius:10px;font-size:9px;font-weight:800;margin-right:3px">CHRONIC</span>':''}
+          ${escalated?'<span style="padding:2px 7px;background:#D97706;color:#fff;border-radius:10px;font-size:9px;font-weight:800">ESCALATED</span>':''}
+          ${!chronic&&!escalated?'<span style="color:var(--t4);font-size:10px">—</span>':''}
+        </td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>
+</div>`;
+}
+
+/* ── Feature 4: Department Negligence Scorecard ─────────────── */
+function renderIntelDepts(container){
+  const ci=S.intel;
+  const findings=intelFindings(ci.clientId);
+  const depts={};
+  findings.forEach(f=>{
+    if(!depts[f.dept]) depts[f.dept]={raised:0,closed:0,open:0,ages:[],openFindings:[]};
+    depts[f.dept].raised++;
+    if(f.status==='Closed'){ depts[f.dept].closed++; }
+    else { depts[f.dept].open++; depts[f.dept].openFindings.push(f); if(f.firstRaised){const a=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365);depts[f.dept].ages.push(a);} }
+  });
+  const rows=Object.entries(depts).map(([dept,d])=>{
+    const rate=d.raised?Math.round(d.closed/d.raised*100):100;
+    const avgAge=d.ages.length?+(d.ages.reduce((s,a)=>s+a,0)/d.ages.length).toFixed(1):0;
+    return {dept,rate,avgAge,...d};
+  }).sort((a,b)=>a.rate-b.rate);
+
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 4 — Department Negligence Scorecard</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Remediation performance by department. Departments below 40% are flagged as negligent. Click any bar or row to see their open findings.</div>
+  <div style="position:relative;height:240px;margin-bottom:20px"><canvas id="chart-depts"></canvas></div>
+</div>
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:var(--bg3)">
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Department</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Total Raised</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Closed</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Still Open</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Avg Age (yrs)</th>
+      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Rem. Rate</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Flag</th>
+    </tr></thead>
+    <tbody>
+    ${rows.map(r=>{
+      const negligent=r.rate<40;
+      const rc=r.rate>=70?'#1A7A4A':r.rate>=40?'#D97706':'#CC2200';
+      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${negligent?'background:rgba(204,34,0,.03)':''}"
+        onclick="renderIntelDeptDrill('${r.dept}')">
+        <td style="padding:9px 10px;font-weight:700;color:var(--t1)">${esc(r.dept)}</td>
+        <td style="padding:9px 10px;text-align:center">${r.raised}</td>
+        <td style="padding:9px 10px;text-align:center;color:#1A7A4A;font-weight:700">${r.closed}</td>
+        <td style="padding:9px 10px;text-align:center;color:${r.open>0?'#CC2200':'var(--t3)'};font-weight:700">${r.open}</td>
+        <td style="padding:9px 10px;text-align:center;color:${r.avgAge>2?'#CC2200':'var(--t3)'}">${r.avgAge||'—'}</td>
+        <td style="padding:9px 10px;text-align:center;font-weight:900;color:${rc}">${r.rate}%</td>
+        <td style="padding:9px 10px">${negligent?'<span style="padding:2px 8px;background:#CC2200;color:#fff;border-radius:10px;font-size:9px;font-weight:800">NEGLIGENT — mgmt attn required</span>':'<span style="color:#1A7A4A;font-size:10px;font-weight:700">✓ Acceptable</span>'}</td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>
+</div>
+<div id="dept-drill" style="display:none;margin-top:16px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px"></div>`;
+
+  setTimeout(()=>{
+    const ctx=document.getElementById('chart-depts');
+    if(!ctx||!window.Chart)return;
+    new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:rows.map(r=>r.dept),
+        datasets:[
+          { label:'Remediation Rate %', data:rows.map(r=>r.rate), backgroundColor:rows.map(r=>r.rate<40?'rgba(204,34,0,.7)':r.rate<70?'rgba(217,119,6,.7)':'rgba(26,122,74,.7)'), borderRadius:4 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, annotation:{} },
+        scales:{
+          y:{min:0,max:100,title:{display:true,text:'Remediation Rate (%)'},ticks:{callback:v=>v+'%'}},
+          x:{ticks:{font:{size:10}}}
+        },
+        onClick:(evt,els)=>{ if(els.length) renderIntelDeptDrill(rows[els[0].index].dept); }
+      },
+      plugins:[{
+        id:'threshold',
+        afterDraw(chart){
+          const {ctx,chartArea:{left,right},scales:{y}}=chart;
+          const y40=y.getPixelForValue(40);
+          ctx.save();ctx.beginPath();ctx.moveTo(left,y40);ctx.lineTo(right,y40);
+          ctx.strokeStyle='#CC2200';ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();
+          ctx.font='bold 10px sans-serif';ctx.fillStyle='#CC2200';ctx.fillText('40% threshold',left+4,y40-5);
+          ctx.restore();
+        }
+      }]
+    });
+  },50);
+}
+function renderIntelDeptDrill(dept){
+  const ci=S.intel;
+  const findings=intelFindings(ci.clientId).filter(f=>f.dept===dept&&f.status!=='Closed');
+  const drill=document.getElementById('dept-drill');
+  if(!drill)return;
+  drill.style.display='block';
+  drill.innerHTML=`
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1)">Open findings — ${esc(dept)}</div>
+  <button onclick="document.getElementById('dept-drill').style.display='none'" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;font-size:11px">✕ Close</button>
+</div>
+${findings.length===0?`<div style="color:#1A7A4A;font-size:12px;font-weight:700">✓ No open findings for this department.</div>`:
+  findings.map(f=>`
+<div style="border:1px solid var(--border);border-radius:6px;padding:11px 14px;margin-bottom:8px;border-left:3px solid ${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">
+  <div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:3px">${esc(f.finding)}</div>
+  <div style="font-size:10px;color:var(--t3)">Area: <strong>${esc(f.controlArea)}</strong> · Risk: <strong style="color:${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">${f.riskLevel}</strong> · First raised: <strong>${f.firstRaised||'—'}</strong></div>
+</div>`).join('')}`;
+  drill.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ── Feature 5: Root Cause Pattern Analysis ─────────────────── */
+function renderIntelRootCause(container){
+  const ci=S.intel;
+  const findings=intelFindings(ci.clientId);
+  const engsByYear={};
+  intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo).forEach(e=>engsByYear[e.year]=e.id);
+  const cats=['People','Process','Technology','Governance'];
+  const catColors={'People':'rgba(26,86,160,.7)','Process':'rgba(217,119,6,.7)','Technology':'rgba(124,58,237,.7)','Governance':'rgba(204,34,0,.7)'};
+  // overall distribution
+  const overall={'People':0,'Process':0,'Technology':0,'Governance':0};
+  findings.forEach(f=>{ if(overall[f.rootCause]!==undefined) overall[f.rootCause]++; });
+  // by year
+  const byYear={};
+  Object.entries(engsByYear).forEach(([yr,eid])=>{
+    byYear[yr]={'People':0,'Process':0,'Technology':0,'Governance':0};
+    findings.filter(f=>f.engId===eid).forEach(f=>{ if(byYear[yr][f.rootCause]!==undefined) byYear[yr][f.rootCause]++; });
+  });
+  const years=Object.keys(byYear).sort();
+  // flag dominant >60%
+  const total=Object.values(overall).reduce((s,v)=>s+v,0);
+  const dominant=total>0?cats.find(c=>overall[c]/total>0.6):null;
+
+  container.innerHTML=`
+<div style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px;margin-bottom:16px">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Root Cause Distribution</div>
+    <div style="font-size:10px;color:var(--t3);margin-bottom:14px">All findings across selected years</div>
+    <div style="position:relative;height:220px"><canvas id="chart-rc-donut"></canvas></div>
+    ${dominant?`<div style="margin-top:12px;padding:8px 12px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:10px;font-weight:700;color:#CC2200">⚠ ${dominant} drives ${Math.round(overall[dominant]/total*100)}% of findings — systemic issue, not isolated incidents</div>`:''}
+  </div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Root Cause Mix by Year</div>
+    <div style="font-size:10px;color:var(--t3);margin-bottom:14px">Stacked bar — trends visible across financial years</div>
+    <div style="position:relative;height:220px"><canvas id="chart-rc-stacked"></canvas></div>
+  </div>
+</div>`;
+
+  setTimeout(()=>{
+    const d=document.getElementById('chart-rc-donut');
+    if(d&&window.Chart){
+      new Chart(d,{type:'doughnut',data:{labels:cats,datasets:[{data:cats.map(c=>overall[c]),backgroundColor:cats.map(c=>catColors[c]),borderWidth:2,borderColor:'#fff'}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:10}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} findings (${total?Math.round(ctx.parsed/total*100):0}%)`}}}}});
+    }
+    const s=document.getElementById('chart-rc-stacked');
+    if(s&&window.Chart){
+      new Chart(s,{type:'bar',data:{labels:years.map(y=>'FY'+y),datasets:cats.map(c=>({label:c,data:years.map(y=>byYear[y]?.[c]||0),backgroundColor:catColors[c],borderRadius:2}))},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},padding:8}}},scales:{x:{stacked:true},y:{stacked:true,title:{display:true,text:'Finding count'},ticks:{stepSize:1}}}}});
+    }
+  },50);
+}
+
+/* ── Feature 6: Remediation Velocity Tracking ───────────────── */
+function renderIntelVelocity(container){
+  const ci=S.intel;
+  const vel=INTEL_VELOCITY[ci.clientId]||{};
+  const fys=Object.keys(vel).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=ci.yrFrom&&y<=ci.yrTo;}).sort();
+  const vals=fys.map(fy=>vel[fy]);
+  const target=90;
+  // detect worsening 3+ consecutive years
+  let worseStreak=0, maxWorseStreak=0, prevVal=null;
+  fys.forEach((fy,i)=>{
+    const v=vals[i];
+    if(v!==null&&prevVal!==null){ if(v>prevVal){worseStreak++;maxWorseStreak=Math.max(maxWorseStreak,worseStreak);}else worseStreak=0; }
+    if(v!==null) prevVal=v;
+  });
+
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 6 — Remediation Velocity Tracking</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Average days from finding raised to finding closed, per year. Target: ${target} days. Upward trend = management becoming less responsive.</div>
+  ${maxWorseStreak>=3?`<div style="margin-bottom:12px;padding:8px 12px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:11px;font-weight:700;color:#CC2200">🚨 Velocity has worsened for ${maxWorseStreak}+ consecutive years — management responsiveness is deteriorating</div>`:''}
+  <div style="position:relative;height:260px"><canvas id="chart-velocity"></canvas></div>
+  <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap">
+    ${fys.map((fy,i)=>{
+      const v=vals[i];
+      if(v===null)return `<div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;min-width:90px;text-align:center"><div style="font-size:10px;color:var(--t3)">${fy}</div><div style="font-size:18px;font-weight:800;color:var(--t4)">N/A</div><div style="font-size:9px;color:var(--t4)">In progress</div></div>`;
+      const c=v>target*1.5?'#CC2200':v>target?'#D97706':'#1A7A4A';
+      return `<div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;min-width:90px;text-align:center;border-top:3px solid ${c}"><div style="font-size:10px;color:var(--t3)">${fy}</div><div style="font-size:20px;font-weight:900;color:${c}">${v}</div><div style="font-size:9px;color:var(--t4)">days avg</div></div>`;
+    }).join('')}
+  </div>
+</div>`;
+
+  setTimeout(()=>{
+    const ctx=document.getElementById('chart-velocity');
+    if(!ctx||!window.Chart)return;
+    new Chart(ctx,{
+      type:'bar',
+      data:{labels:fys,datasets:[{label:'Avg days to close',data:vals,backgroundColor:vals.map(v=>v===null?'transparent':v>target*1.5?'rgba(204,34,0,.7)':v>target?'rgba(217,119,6,.7)':'rgba(26,122,74,.7)'),borderRadius:5}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{y:{min:0,title:{display:true,text:'Days to close'}}},
+      },
+      plugins:[{
+        id:'targetLine',
+        afterDraw(chart){
+          const {ctx:c,chartArea:{left,right},scales:{y}}=chart;
+          const yPos=y.getPixelForValue(target);
+          c.save();c.beginPath();c.moveTo(left,yPos);c.lineTo(right,yPos);
+          c.strokeStyle='#1A7A4A';c.lineWidth=2;c.setLineDash([6,4]);c.stroke();
+          c.font='bold 10px sans-serif';c.fillStyle='#1A7A4A';c.fillText('90-day target',left+4,yPos-5);
+          c.restore();
+        }
+      }]
+    });
+  },50);
+}
+
+/* ── Feature 7: Systemic Risk Flag Panel ────────────────────── */
+function renderIntelFlags(container){
+  const ci=S.intel;
+  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
+  const findings=intelFindings(ci.clientId);
+  const flags=[];
+
+  // (a) same finding recurring 3+ times
+  const recMap={};
+  findings.forEach(f=>{const root=f.recurrenceLink||f.id;if(!recMap[root])recMap[root]=[];recMap[root].push(f);});
+  Object.entries(recMap).forEach(([root,chain])=>{
+    if(chain.length>=3){
+      flags.push({
+        type:'RECURRING_FINDING', severity:'Critical',
+        pattern:`Finding "${chain[0].finding.slice(0,70)}…" has recurred ${chain.length} times`,
+        evidence:`First raised ${chain[0].firstRaised} · Control area: ${chain[0].controlArea} · Dept: ${chain[0].dept}`,
+        action:'Generate management letter addressing persistent control failure'
+      });
+    }
+  });
+
+  // (b) dept remediation rate below 40% for 2+ years
+  const deptByYear={};
+  findings.forEach(f=>{
+    const eng=INTEL_ENGAGEMENTS.find(e=>e.id===f.engId);
+    if(!eng)return;
+    const key=`${f.dept}:${eng.year}`;
+    if(!deptByYear[key])deptByYear[key]={raised:0,closed:0};
+    deptByYear[key].raised++;
+    if(f.status==='Closed')deptByYear[key].closed++;
+  });
+  const deptYearRates={};
+  Object.entries(deptByYear).forEach(([k,v])=>{
+    const [dept,yr]=k.split(':');
+    if(!deptYearRates[dept])deptYearRates[dept]=[];
+    const rate=v.raised?Math.round(v.closed/v.raised*100):100;
+    deptYearRates[dept].push({yr,rate});
+  });
+  Object.entries(deptYearRates).forEach(([dept,yrRates])=>{
+    const lowYears=yrRates.filter(r=>r.rate<40);
+    if(lowYears.length>=2){
+      flags.push({
+        type:'DEPT_NEGLIGENCE', severity:'High',
+        pattern:`${dept} has maintained below 40% remediation rate for ${lowYears.length} years`,
+        evidence:`Years: ${lowYears.map(r=>r.yr).join(', ')} · Rates: ${lowYears.map(r=>r.rate+'%').join(', ')}`,
+        action:'Management attention required — escalate to department head and CFO'
+      });
+    }
+  });
+
+  // (c) root cause clustering >60%
+  const rcTotals={'People':0,'Process':0,'Technology':0,'Governance':0};
+  findings.forEach(f=>{if(rcTotals[f.rootCause]!==undefined)rcTotals[f.rootCause]++;});
+  const totalF=Object.values(rcTotals).reduce((s,v)=>s+v,0);
+  Object.entries(rcTotals).forEach(([cat,cnt])=>{
+    if(totalF>0&&cnt/totalF>0.6){
+      flags.push({
+        type:'ROOT_CAUSE_CLUSTER', severity:'Critical',
+        pattern:`${cat} accounts for ${Math.round(cnt/totalF*100)}% of all findings — systemic, not isolated`,
+        evidence:`${cnt} of ${totalF} total findings trace to ${cat} root cause`,
+        action:'Structural intervention required — not a controls refresh but an organisational change'
+      });
+    }
+  });
+
+  // (d) velocity worsening 3+ years
+  const vel=INTEL_VELOCITY[ci.clientId]||{};
+  const velVals=Object.keys(vel).sort().map(fy=>vel[fy]).filter(v=>v!==null);
+  let wStreak=0;
+  velVals.forEach((v,i)=>{if(i>0&&v>velVals[i-1])wStreak++;else if(i>0)wStreak=0;});
+  if(wStreak>=3){
+    flags.push({
+      type:'VELOCITY_DECLINE', severity:'High',
+      pattern:`Remediation velocity has worsened for ${wStreak}+ consecutive years`,
+      evidence:`Average closure time increasing year-on-year — management responsiveness declining`,
+      action:'Initiate remediation SLA enforcement. Consider formal audit committee reporting.'
+    });
+  }
+
+  // (e) chronic heatmap cells
+  const chronicCtrl=intelChronicControls(ci.clientId,ci.yrFrom,ci.yrTo);
+  if(chronicCtrl>0){
+    flags.push({
+      type:'CHRONIC_CONTROL', severity:'Critical',
+      pattern:`${chronicCtrl} control area(s) rated Critical for 3+ consecutive years`,
+      evidence:`See Control Heatmap tab for specific areas`,
+      action:'Immediate escalation to Risk Committee. Potential regulatory disclosure required.'
+    });
+  }
+
+  const sevColor={Critical:'#CC2200',High:'#D97706',Medium:'#D97706'};
+
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 7 — Systemic Risk Flag Panel</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Auto-generated flags based on data patterns. Each flag includes the pattern, evidence, and a recommended action.</div>
+  ${flags.length===0?
+    `<div style="padding:24px;text-align:center;color:#1A7A4A;font-weight:700;font-size:13px">✓ No systemic risk flags triggered for this client and date range.</div>`:
+    flags.map(f=>`
+<div style="border:1px solid ${sevColor[f.severity]}44;border-left:4px solid ${sevColor[f.severity]};border-radius:8px;padding:16px;margin-bottom:12px;background:${sevColor[f.severity]}08">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span style="padding:2px 8px;background:${sevColor[f.severity]};color:#fff;border-radius:10px;font-size:10px;font-weight:800">${f.severity}</span>
+    <span style="font-size:12px;font-weight:800;color:${sevColor[f.severity]}">${f.pattern}</span>
+  </div>
+  <div style="font-size:11px;color:var(--t2);margin-bottom:6px"><strong>Evidence:</strong> ${esc(f.evidence)}</div>
+  <div style="font-size:11px;color:var(--t2);display:flex;align-items:flex-start;gap:8px">
+    <strong style="white-space:nowrap">Action:</strong> ${esc(f.action)}
+    <button onclick="S.intel.tab='narrative';renderIntelligenceTab()" style="margin-left:auto;padding:4px 10px;background:#FFE600;border:none;border-radius:4px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap">Generate letter →</button>
+  </div>
+</div>`).join('')}
+</div>`;
+}
+
+/* ── Feature 8: AI-Generated Risk Narrative ─────────────────── */
+function renderIntelNarrative(container){
+  const ci=S.intel;
+  container.innerHTML=`
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 8 — AI-Generated Risk Narrative</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Sends all client intelligence data to Claude and generates a structured risk narrative covering health trajectory, systemic weaknesses, negligent departments, root cause patterns, and escalation recommendations.</div>
+  <button id="btn-generate-narrative" onclick="generateIntelNarrative()" style="padding:10px 20px;background:#FFE600;border:none;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:16px">
+    ✦ Generate Risk Narrative
+  </button>
+  <div id="intel-narrative-out" style="display:none"></div>
+</div>`;
+}
+
+async function generateIntelNarrative(){
+  const ci=S.intel;
+  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Unknown Client'};
+  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
+  const findings=intelFindings(ci.clientId);
+  const btn=document.getElementById('btn-generate-narrative');
+  const out=document.getElementById('intel-narrative-out');
+  if(btn) btn.disabled=true, btn.textContent='Generating…';
+  if(out) out.style.display='block', out.innerHTML='<div style="color:var(--t3);font-size:12px;padding:12px 0">Analysing client data and generating narrative…</div>';
+
+  const depts={};
+  findings.forEach(f=>{
+    if(!depts[f.dept])depts[f.dept]={raised:0,closed:0};
+    depts[f.dept].raised++;
+    if(f.status==='Closed')depts[f.dept].closed++;
+  });
+  const deptSummary=Object.entries(depts).map(([d,v])=>`${d}: ${v.raised} raised, ${v.closed} closed (${Math.round(v.closed/v.raised*100)}% remediation rate)`).join('; ');
+
+  const rcTotals={'People':0,'Process':0,'Technology':0,'Governance':0};
+  findings.forEach(f=>{if(rcTotals[f.rootCause]!==undefined)rcTotals[f.rootCause]++;});
+
+  const recurrings=findings.filter(f=>f.recurrenceLink);
+  const chronics=findings.filter(f=>!f.recurrenceLink&&f.firstRaised&&(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365)>2&&f.status!=='Closed');
+
+  const prompt=`You are a senior internal audit quality assurance partner. Write a structured risk narrative for the following client intelligence data. Use a professional tone suitable for a Board-level management letter.
+
+CLIENT: ${selClient.name} | Industry: ${selClient.industry||'N/A'} | Period: FY${ci.yrFrom}–FY${ci.yrTo}
+
+ENGAGEMENT HISTORY:
+${engs.map(e=>`${e.fy}: ${e.area} — Risk score ${e.riskScore}/100, Remediation rate ${e.remediationRate}%, Open findings ${e.openFindings}`).join('\n')}
+
+DEPARTMENT PERFORMANCE:
+${deptSummary}
+
+ROOT CAUSE DISTRIBUTION:
+${Object.entries(rcTotals).map(([k,v])=>`${k}: ${v} findings`).join(', ')}
+
+RECURRING FINDINGS (${recurrings.length}):
+${recurrings.slice(0,5).map(f=>`- ${f.finding.slice(0,120)} [Area: ${f.controlArea}, Dept: ${f.dept}, Root cause: ${f.rootCause}]`).join('\n')}
+
+CHRONIC OPEN FINDINGS (open >2 years, ${chronics.length}):
+${chronics.slice(0,5).map(f=>`- ${f.finding.slice(0,120)} [Raised: ${f.firstRaised}, Dept: ${f.dept}]`).join('\n')}
+
+Write a structured narrative with these sections:
+1. Overall Client Health Trajectory (3-4 sentences summarising trend)
+2. Top 3 Systemic Control Weaknesses (with evidence and impact)
+3. Department Negligence Assessment (name specific departments with data)
+4. Root Cause Pattern Analysis (what the distribution indicates about governance)
+5. Recommended Escalation Actions and Management Letter Points (bullet list)
+
+Keep each section concise but substantive. Use professional audit language.`;
+
+  try {
+    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
+      model:'claude-opus-4-8',
+      max_tokens:1500,
+      thinking:{type:'adaptive'},
+      messages:[{role:'user',content:prompt}]
+    });
+    const data=await res.json();
+    const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n\n').trim()||'No narrative generated.';
+    if(out){
+      out.innerHTML=`
+<div style="border:1px solid var(--border);border-radius:6px;padding:20px;font-size:12px;line-height:1.7;color:var(--t1);white-space:pre-wrap;font-family:inherit;margin-bottom:14px">${esc(text)}</div>
+<div style="display:flex;gap:10px">
+  <button onclick="intelNarrativeExportWord()" style="padding:8px 16px;background:#1A3A5C;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">⇩ Export Word</button>
+  <button onclick="intelNarrativeExportPDF()" style="padding:8px 16px;background:#CC2200;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">⇩ Export PDF</button>
+</div>`;
+      out._narrativeText=text;
+    }
+  } catch(e){
+    if(out) out.innerHTML=`<div style="color:#CC2200;font-size:12px;padding:8px">Error: ${esc(e.message)} — check your API key in ⚙ API Key settings.</div>`;
+  } finally {
+    if(btn) btn.disabled=false, btn.textContent='✦ Generate Risk Narrative';
+  }
+}
+
+function intelNarrativeExportWord(){
+  const ci=S.intel;
+  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
+  const out=document.getElementById('intel-narrative-out');
+  const text=out?._narrativeText||'No narrative generated.';
+  const html=`<html><body style="font-family:Calibri,sans-serif;font-size:11pt;margin:48pt 60pt">
+<h1 style="font-size:16pt;color:#1A3A5C;margin-bottom:6pt">360° Risk Intelligence Narrative</h1>
+<h2 style="font-size:13pt;color:#1A3A5C;margin-bottom:4pt">${esc(selClient.name)} — FY${ci.yrFrom} to FY${ci.yrTo}</h2>
+<p style="color:#666;font-size:9pt;margin-bottom:24pt">Generated: ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</p>
+<div style="white-space:pre-wrap;line-height:1.6">${esc(text)}</div>
+</body></html>`;
+  const blob=new Blob([html],{type:'application/msword'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`Risk_Narrative_${selClient.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
+  a.click();showToast('✓ Word narrative downloaded','green');
+}
+
+function intelNarrativeExportPDF(){
+  if(!window.jspdf){showToast('PDF library not loaded','red');return;}
+  const ci=S.intel;
+  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
+  const out=document.getElementById('intel-narrative-out');
+  const text=out?._narrativeText||'No narrative generated.';
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const margin=18, pageW=210, usableW=pageW-margin*2;
+  let y=margin;
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(26,58,92);
+  doc.text('360° Risk Intelligence Narrative',margin,y);y+=9;
+  doc.setFontSize(12);doc.text(selClient.name+' — FY'+ci.yrFrom+' to FY'+ci.yrTo,margin,y);y+=7;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(120,120,120);
+  doc.text('Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}),margin,y);y+=10;
+  doc.setDrawColor(26,58,92);doc.setLineWidth(.5);doc.line(margin,y,pageW-margin,y);y+=8;
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(30,30,30);
+  const lines=doc.splitTextToSize(text,usableW);
+  lines.forEach(ln=>{
+    if(y>285){doc.addPage();y=margin;}
+    doc.text(ln,margin,y);y+=5;
+  });
+  doc.save(`Risk_Narrative_${selClient.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+  showToast('✓ PDF narrative downloaded','green');
+}
 </script>
 </body>
 </html>
