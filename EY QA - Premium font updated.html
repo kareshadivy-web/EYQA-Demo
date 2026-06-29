@@ -3687,7 +3687,7 @@ function goPane(n){
   const wb=document.getElementById('wiz-back'); if(wb) wb.style.display=n>1?'inline-flex':'none'; // back always visible on step>1
   const wn=document.getElementById('wiz-next'); if(wn) wn.style.display=n<total?'inline-flex':'none';
   const wf=document.getElementById('wiz-finish'); if(wf) wf.style.display='none'; // pane6 has its own export buttons
-  if(n===total) buildFinalReport();
+  if(n===total){ wizFinish(); return; }
   if(n===5) setTimeout(updateWizQAProgress,200);
   if(n===5) requestAnimationFrame(()=>initDocMatrix());
   if(n===3) requestAnimationFrame(()=>renderWizRefDocs());
