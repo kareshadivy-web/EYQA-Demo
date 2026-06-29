@@ -1568,7 +1568,7 @@ a { color: inherit; text-decoration: none; }
 <!-- ================================================================
      WIZARD MODAL
      ================================================================ -->
-<div id="wizard-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeWizard()">
+<div id="wizard-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this){closeWizard();nav('dashboard');}">
   <div class="modal-box" style="padding:0;">
 
     <!-- Step bar -->
@@ -1913,7 +1913,7 @@ a { color: inherit; text-decoration: none; }
     <!-- Footer — fixed at bottom, never scrolls -->
     <div class="modal-footer">
       <div style="display:flex;align-items:center;gap:12px">
-        <button class="btn btn-outline btn-sm" onclick="closeWizard()" style="border-color:var(--green);color:var(--green)">
+        <button class="btn btn-outline btn-sm" onclick="closeWizard();nav('dashboard')" style="border-color:var(--green);color:var(--green)">
           💾 Save &amp; Close
         </button>
         <span id="wiz-save-status" style="font-size:11px;color:var(--green);font-weight:600;opacity:0;transition:opacity .4s"></span>
@@ -3451,15 +3451,7 @@ function closeWizard(){
   // Always save before closing — regardless of which step we're on
   wizAutosave();
   document.getElementById('wizard-modal').style.display='none';
-
-  // If we have a saved draft assignment, navigate to it so the user
-  // can see all their uploaded documents and filled data immediately
-  const draftId = S.wiz && S.wiz._draftAsgId;
-  if(draftId && ASSIGNMENTS.find(a=>a.id===draftId)){
-    S.currentAsgId = draftId;
-    S.filterTab = 'all';
-    nav('asg-detail');
-  }
+  // Navigation is handled by the caller (Save & Close, Mark as Complete, X button)
 }
 
 function wizDiscardAndClose(){
