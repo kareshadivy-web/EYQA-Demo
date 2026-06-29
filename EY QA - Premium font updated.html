@@ -2585,10 +2585,9 @@ function doLogout(){
    ============================================================ */
 function asgDetailBack(){
   if(S._fromWizardPane6){
-    // Came from wizard Final Report — reopen wizard at pane 6
     S._fromWizardPane6 = false;
     const _modal = document.getElementById('wizard-modal');
-    if(_modal){ _modal.style.display='flex'; S.wiz.step=6; goPane(6); }
+    if(_modal){ _modal.style.display='flex'; S.wiz.step=5; goPane(5); }
     else { S.assignFilter='all'; nav('assignments'); }
   } else {
     S.assignFilter='all';
@@ -3686,8 +3685,12 @@ function goPane(n){
   document.querySelectorAll('.wiz-step').forEach(s=>{ const sn=parseInt(s.dataset.s); s.classList.remove('active','done'); if(sn===n) s.classList.add('active'); else if(sn<n) s.classList.add('done'); });
   const wb=document.getElementById('wiz-back'); if(wb) wb.style.display=n>1?'inline-flex':'none'; // back always visible on step>1
   const wn=document.getElementById('wiz-next'); if(wn) wn.style.display=n<total?'inline-flex':'none';
-  const wf=document.getElementById('wiz-finish'); if(wf) wf.style.display='none'; // pane6 has its own export buttons
-  if(n===total){ wizFinish(); return; }
+  const wf=document.getElementById('wiz-finish');
+  if(n===total){
+    if(wf){ wf.textContent='Done →'; wf.style.display='inline-flex'; wf.onclick=()=>{ closeWizard(); nav('asg-detail'); }; }
+    buildPane6(); return;
+  }
+  if(wf) wf.style.display='none';
   if(n===5) setTimeout(updateWizQAProgress,200);
   if(n===5) requestAnimationFrame(()=>initDocMatrix());
   if(n===3) requestAnimationFrame(()=>renderWizRefDocs());
@@ -4666,9 +4669,76 @@ function showBackendHelper(payload, format){
 }
 
 async function wizGenerateAndSave(){
-  const btn = document.getElementById('wiz-gen-save-btn');
-  if(btn){ btn.textContent='⟳ Saving…'; btn.disabled=true; }
-  await wizFinish(true);
+  await buildPane6();
+}
+
+async function buildPane6(){
+  // Hide the "Generate Report" button — we're auto-building
+  const genBtn = document.getElementById('wiz-gen-save-btn');
+  if(genBtn){ genBtn.style.display='none'; }
+
+  // --- save assignment (same logic as wizFinish) ---
+  const entity=wizGetClientName()||'Unknown Client';
+  const name=(document.getElementById('w-name')||{}).value.trim()||'New Engagement';
+  const auditor=(document.getElementById('w-auditor-name')||{}).value.trim();
+  const auditorEmail=(document.getElementById('w-auditor-email')||{}).value.trim();
+  const risk='High';
+  const pFrom=(document.getElementById('w-period-from')||{}).value||'';
+  const pTo=(document.getElementById('w-period-to')||{}).value||'';
+  const period=pFrom&&pTo
+    ?new Date(pFrom).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})+' – '+new Date(pTo).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})
+    :pFrom||pTo||'—';
+  const scope=(document.getElementById('w-scope')||{}).value.trim()||'';
+  const engType=(document.getElementById('w-eng-type')||{value:'Internal Audit Review'}).value;
+  const qaStart=(document.getElementById('w-qa-start')||{}).value;
+  const qaDue=(document.getElementById('w-qa-due')||{}).value;
+  const qaEnd=(document.getElementById('w-qa-end')||{}).value;
+  const id=S.wiz._draftAsgId&&ASSIGNMENTS.find(a=>a.id===S.wiz._draftAsgId)
+    ?S.wiz._draftAsgId
+    :'GQ-'+Date.now().toString().slice(-6)+'-'+name.substring(0,3).toUpperCase().replace(/[^A-Z]/g,'X');
+  const docs=Object.values(S.wiz.docStore||{});
+  const cpDocMapSave={};
+  Object.entries(S.wiz.cpDocMap||{}).forEach(([k,v])=>{ cpDocMapSave[parseInt(k)]=v instanceof Set?v:new Set(Array.isArray(v)?v:[]); });
+  const wizFindings=Object.entries(S.wiz.cpResults||{}).map(([cpNo,r])=>({
+    cpNo:parseInt(cpNo),status:r.status,finding:r.finding||'',evidence:r.evidence||'',
+    rec:r.rec||'',remarks:r.remarks||'',srcDoc:'Reference Documents',
+    accepted:r.accepted||false,subFindings:r.subFindings||[]
+  })).filter(r=>r.status!=='Skipped');
+  if(wizFindings.length>0){ FINDINGS[id]=wizFindings; }
+  const newAsg={id,name,entity,auditor,auditorEmail,risk,period,scope,engType,qaStart,qaDue,qaEnd,
+    issued:wizFindings.length>0?new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):'—',
+    status:wizFindings.length>0?'completed':'in-progress',
+    cls:wizFindings.length>0?(wizFindings.filter(f=>f.status==='Exception').length===0?'Generally Conforms':wizFindings.filter(f=>f.status==='Exception').length<=3?'Partially Conforms':'Does Not Conform'):'In Review',
+    clientId:S.wiz.selectedClientId,
+    findId:id,hasReview:wizFindings.length>0,progress:wizFindings.length>0?1:0,docs,refDocs:S.wiz.refDocs||{},
+    docStore:{...S.wiz.docStore},cpDocMap:cpDocMapSave,
+    checklist:S.wiz.clMode==='custom'&&S.wiz.customCL?S.wiz.customCL:CHECKLIST,isDraft:false};
+  const draftIdx=ASSIGNMENTS.findIndex(a=>a.id===id);
+  if(draftIdx>=0) ASSIGNMENTS[draftIdx]=newAsg; else ASSIGNMENTS.unshift(newAsg);
+  wizClearDraft();
+  persistSave();
+  S.currentAsgId = id;
+  S._fromWizardPane6 = true;
+
+  // --- render asg-detail into pane 6 body ---
+  const body = document.getElementById('wiz-final-report-body');
+  if(body){
+    // Render the real asg-detail page into a temporary container then inject
+    const tmp = document.createElement('div');
+    const origWs = document.getElementById('page-content');
+    const savedPage = S.page;
+    // Temporarily hijack page-content render to a temp node
+    origWs.id = '__pc_tmp__';
+    const fakeWs = document.createElement('div');
+    fakeWs.id = 'page-content';
+    document.body.appendChild(fakeWs);
+    S.page = 'asg-detail';
+    renderAsgDetail();
+    body.innerHTML = fakeWs.innerHTML;
+    document.body.removeChild(fakeWs);
+    origWs.id = 'page-content';
+    S.page = savedPage;
+  }
 }
 
 async function wizFinish(stayInPane){
