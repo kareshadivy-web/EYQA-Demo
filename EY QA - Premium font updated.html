@@ -3686,10 +3686,7 @@ function goPane(n){
   const wb=document.getElementById('wiz-back'); if(wb) wb.style.display=n>1?'inline-flex':'none'; // back always visible on step>1
   const wn=document.getElementById('wiz-next'); if(wn) wn.style.display=n<total?'inline-flex':'none';
   const wf=document.getElementById('wiz-finish');
-  if(n===total){
-    if(wf){ wf.textContent='Done →'; wf.style.display='inline-flex'; wf.onclick=()=>{ closeWizard(); nav('asg-detail'); }; }
-    buildPane6(); return;
-  }
+  if(n===total){ buildPane6(); return; }
   if(wf) wf.style.display='none';
   if(n===5) setTimeout(updateWizQAProgress,200);
   if(n===5) requestAnimationFrame(()=>initDocMatrix());
@@ -4673,11 +4670,10 @@ async function wizGenerateAndSave(){
 }
 
 async function buildPane6(){
-  // Hide the "Generate Report" button — we're auto-building
   const genBtn = document.getElementById('wiz-gen-save-btn');
-  if(genBtn){ genBtn.style.display='none'; }
+  if(genBtn) genBtn.style.display='none';
 
-  // --- save assignment (same logic as wizFinish) ---
+  // --- collect & save assignment as in-progress (not completed yet) ---
   const entity=wizGetClientName()||'Unknown Client';
   const name=(document.getElementById('w-name')||{}).value.trim()||'New Engagement';
   const auditor=(document.getElementById('w-auditor-name')||{}).value.trim();
@@ -4704,11 +4700,13 @@ async function buildPane6(){
     rec:r.rec||'',remarks:r.remarks||'',srcDoc:'Reference Documents',
     accepted:r.accepted||false,subFindings:r.subFindings||[]
   })).filter(r=>r.status!=='Skipped');
-  if(wizFindings.length>0){ FINDINGS[id]=wizFindings; }
+  if(wizFindings.length>0) FINDINGS[id]=wizFindings;
+  const excCount=wizFindings.filter(f=>f.status==='Exception').length;
+  const cls=excCount===0?'Generally Conforms':excCount<=3?'Partially Conforms':'Does Not Conform';
   const newAsg={id,name,entity,auditor,auditorEmail,risk,period,scope,engType,qaStart,qaDue,qaEnd,
-    issued:wizFindings.length>0?new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):'—',
-    status:wizFindings.length>0?'completed':'in-progress',
-    cls:wizFindings.length>0?(wizFindings.filter(f=>f.status==='Exception').length===0?'Generally Conforms':wizFindings.filter(f=>f.status==='Exception').length<=3?'Partially Conforms':'Does Not Conform'):'In Review',
+    issued:'—',
+    status:'in-progress',  // stays in-progress until explicitly marked complete
+    cls:wizFindings.length>0?cls:'In Review',
     clientId:S.wiz.selectedClientId,
     findId:id,hasReview:wizFindings.length>0,progress:wizFindings.length>0?1:0,docs,refDocs:S.wiz.refDocs||{},
     docStore:{...S.wiz.docStore},cpDocMap:cpDocMapSave,
@@ -4718,26 +4716,54 @@ async function buildPane6(){
   wizClearDraft();
   persistSave();
   S.currentAsgId = id;
-  S._fromWizardPane6 = true;
 
-  // --- render asg-detail into pane 6 body ---
+  // --- update footer: replace Done with Save & Close + Mark as Complete ---
+  const wf = document.getElementById('wiz-finish');
+  if(wf) wf.style.display='none';
+  const footer = wf && wf.parentElement;
+  if(footer){
+    // Remove any previously injected pane6 buttons
+    footer.querySelectorAll('.p6-btn').forEach(b=>b.remove());
+    const btnSave = document.createElement('button');
+    btnSave.className='btn btn-outline p6-btn';
+    btnSave.textContent='💾 Save & Close';
+    btnSave.onclick=()=>{ closeWizard(); nav('dashboard'); };
+    const btnComplete = document.createElement('button');
+    btnComplete.className='btn btn-lime p6-btn';
+    btnComplete.textContent='✔ Mark as Complete';
+    btnComplete.onclick=()=>{
+      const asg=ASSIGNMENTS.find(a=>a.id===id);
+      if(asg){
+        asg.status='completed';
+        asg.issued=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+        persistSave();
+      }
+      closeWizard();
+      nav('dashboard');
+    };
+    footer.appendChild(btnSave);
+    footer.appendChild(btnComplete);
+  }
+
+  // --- show simple confirmation in pane 6 body ---
   const body = document.getElementById('wiz-final-report-body');
   if(body){
-    // Render the real asg-detail page into a temporary container then inject
-    const tmp = document.createElement('div');
-    const origWs = document.getElementById('page-content');
-    const savedPage = S.page;
-    // Temporarily hijack page-content render to a temp node
-    origWs.id = '__pc_tmp__';
-    const fakeWs = document.createElement('div');
-    fakeWs.id = 'page-content';
-    document.body.appendChild(fakeWs);
-    S.page = 'asg-detail';
-    renderAsgDetail();
-    body.innerHTML = fakeWs.innerHTML;
-    document.body.removeChild(fakeWs);
-    origWs.id = 'page-content';
-    S.page = savedPage;
+    const passC=wizFindings.filter(f=>f.status==='Pass').length;
+    const revC=wizFindings.filter(f=>f.status==='Manual Review').length;
+    body.innerHTML=`
+      <div style="text-align:center;padding:48px 24px">
+        <div style="font-size:48px;margin-bottom:16px">✅</div>
+        <div style="font-size:20px;font-weight:800;color:var(--t1);margin-bottom:8px">${esc(name)}</div>
+        <div style="font-size:13px;color:var(--t2);margin-bottom:32px">${esc(entity)} · ${id}</div>
+        <div style="display:flex;justify-content:center;gap:32px;margin-bottom:32px;flex-wrap:wrap">
+          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--lime)">${wizFindings.length}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Checkpoints</div></div>
+          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:#CC2200">${excCount}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Exceptions</div></div>
+          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--amber)">${revC}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Manual Review</div></div>
+          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--green)">${passC}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Pass</div></div>
+        </div>
+        <div style="display:inline-block;padding:8px 20px;border-radius:4px;font-size:13px;font-weight:700;background:${excCount===0?'#e8f5e9':excCount<=3?'#fff8e1':'#fdecea'};color:${excCount===0?'#1A7A4A':excCount<=3?'#996600':'#CC2200'}">${esc(cls)}</div>
+        <div style="margin-top:32px;font-size:13px;color:var(--t2)">Use the buttons below to save &amp; close, or mark this assignment as complete on the dashboard.</div>
+      </div>`;
   }
 }
 
