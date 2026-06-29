@@ -299,21 +299,18 @@
 }
 </style>
 
-<!-- File parsers: SheetJS + Mammoth + PDF.js -->
-<script src="e2e4a18b-0cfe-4a48-8451-e88604379136"></script>
-<script src="cfd3af1b-0448-49e7-8226-85f866ae9113"></script>
-<script src="27cabdd1-9162-4231-8a10-3c0912929a41"></script>
-<script src="555fcc4e-be8d-4992-89fa-b403ca55f397"></script>
-<!-- PDF.js removed: sandbox blocks CDN workers.
-     PDF text extraction done via built-in raw binary parser below. -->
-<!-- Report export: docx.js (Word) + jsPDF (PDF) -->
+<!-- File parsers: SheetJS + Mammoth + PDF.js + JSZip -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Report export: docx.js (Word) + jsPDF + Chart.js -->
 <script>
-/* docx.js fallback — Word export disabled if CDN blocked */
 window.__docxLoaded = false;
 </script>
-<script src="1c13d750-62c0-414f-be97-d79f1b31731f" onload="window.__docxLoaded=true" onerror="console.warn('docx CDN unavailable — Word export disabled')"></script>
-<script src="5d241727-b175-4a8e-9389-0d0ed9504ff3"></script>
-<script src="bac42d9d-fef4-48f5-8fe2-7dd34854757d"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js" onload="window.__docxLoaded=true" onerror="console.warn('docx CDN unavailable')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <style>
 /* ===================================================================
