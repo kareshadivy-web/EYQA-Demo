@@ -2752,8 +2752,7 @@ function renderDashboard(){
     </div>
   </div>
   <div class="page-actions">
-    <button class="btn btn-outline" onclick="nav('reports')">Export Report</button>
-    <button class="btn btn-lime"    onclick="openWizard()">+ New Assignment</button>
+    <button class="btn btn-lime" onclick="openWizard()">+ New Assignment</button>
   </div>
 </div>
 
@@ -3964,8 +3963,8 @@ async function aiSummarise(text, role){
   if(words.length <= maxWords) return text;
   try {
     const prompt = isRec
-      ? `You are an internal audit report writer. Rewrite the following audit recommendation in no more than 40 words. Output only the recommended action — no preamble, no finding description, no file references. Use simple, direct language. End with a full stop.\n\n${text}`
-      : `You are an internal audit report writer. Rewrite the following audit observation in no more than 60 words. Rules: (1) State only what was found to be wrong or missing — do not mention what was done correctly or what passed. (2) Use simple, factual language such as "In X of Y controls, [issue]." (3) Do not include file names, document references, or source citations. (4) Output only the observation, no preamble. End with a full stop.\n\n${text}`;
+      ? `You are an internal audit report writer. Rewrite the following audit recommendation concisely — use as few words as needed, with a maximum of 40 words. Rules: (1) Output only the recommended action. (2) Do not mention control numbers, document names, file references, or IIA standards. (3) No preamble. Use simple, direct language. End with a full stop.\n\n${text}`
+      : `You are an internal audit report writer. Rewrite the following audit observation concisely — use as few words as needed, with a maximum of 60 words. Rules: (1) State only what was found to be wrong or missing — do not mention what was done correctly or what passed. (2) Use simple, factual language such as "In X of Y controls, [issue]." (3) Do not include control numbers, file names, document references, source citations, or IIA standard numbers. (4) Output only the observation, no preamble. End with a full stop.\n\n${text}`;
     const res = await apiFetch('https://api.anthropic.com/v1/messages', {
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
@@ -4719,63 +4718,10 @@ async function wizFinish(stayInPane){
   persistSave();
   S.currentAsgId = id;
 
-  if(stayInPane){
-    // ── Generate Report clicked — stay in wizard, show dashboard + banner ──
-    // Ensure pane 6 is active
-    if(S.wiz.step !== 6) goPane(6);
-
-    // Restore snapshot so buildFinalReport has data
-    S.wiz.cpResults = _snapshotResults;
-
-    // Store saved info so buildFinalReport shows the banner persistently
-    S.wiz._savedAsgId   = id;
-    S.wiz._savedAsgName = name;
-    S.wiz._savedEntity  = entity;
-
-    // buildFinalReport now handles the banner via S.wiz._savedAsgId
-    buildFinalReport();
-
-    // Banner is now inside buildFinalReport — remove old prepend block
-    const _fb = document.getElementById('wiz-final-report-body');
-    if(_fb){
-      const _banner = '<div style="display:flex;align-items:center;gap:14px;padding:14px 20px;'
-        + 'background:rgba(26,122,74,0.06);border:1px solid rgba(26,122,74,0.25);'
-        + 'border-radius:6px;margin-bottom:16px;flex-wrap:wrap;gap:10px">'
-        + '<span style="font-size:24px;flex-shrink:0">✓</span>'
-        + '<div style="flex:1;min-width:180px">'
-        + '<div style="font-size:14px;font-weight:800;color:#1A7A4A">Report Generated &amp; Saved</div>'
-        + '<div style="font-size:12px;color:var(--t2);margin-top:2px">'
-        + esc(name) + ' · ' + esc(entity) + ' — added to your portfolio.</div>'
-        + '</div>'
-        + '<button onclick="closeWizard();S.currentAsgId=\'' + id + '\';S._fromWizardPane6=true;nav(\'asg-detail\')" '
-        + 'style="padding:8px 20px;background:var(--lime);border:none;border-radius:4px;'
-        + 'font-size:12px;font-weight:700;color:#111;cursor:pointer;flex-shrink:0">'
-        + 'Open Assignment →</button>'
-        + '</div>';
-      _fb.innerHTML = _banner + _fb.innerHTML;
-    }
-
-    // Replace Generate Report button with ✓ Saved + Export buttons
-    const _gb = document.getElementById('wiz-gen-save-btn');
-    const _gbParent = _gb ? _gb.parentElement : null;
-    if(_gbParent){
-      _gbParent.style.cssText = 'display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center';
-      _gbParent.innerHTML = [
-        '<span style="padding:7px 14px;background:rgba(26,122,74,0.12);border:1px solid rgba(26,122,74,0.3);border-radius:4px;font-size:12px;font-weight:700;color:#1A7A4A">&#10003; Report Saved</span>',
-        '<div style="flex:1"></div>',
-        '<button onclick="wizExportReport(&quot;word&quot;)"  style="display:inline-flex;align-items:center;gap:5px;padding:7px 16px;background:#1A56A0;border:none;border-radius:4px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">&#8681; Export Word Report</button>',
-        '<button onclick="wizExportReport(&quot;checklist&quot;)" style="display:inline-flex;align-items:center;gap:5px;padding:7px 16px;background:#1A7A4A;border:none;border-radius:4px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">&#8681; Detailed Checklist (Excel)</button>'
-      ].join('');
-    }
-
-    // Update subtitle
-    const _ms = document.querySelector('#pane6 .modal-sub');
-    if(_ms) _ms.textContent='Report saved — export using the buttons below or open the assignment.';
-    return;
-  }
-
-  // Normal close (Save & Close) — close wizard and navigate
+  // Always close wizard and open assignment detail directly as pane 6 result
   closeWizard();
+  S.currentAsgId = id;
+  S._fromWizardPane6 = true;
   if(wizFindings.length>0) nav('asg-detail');
   else if(docs.length>0) await runQAEngine(newAsg);
   else nav('asg-detail');
