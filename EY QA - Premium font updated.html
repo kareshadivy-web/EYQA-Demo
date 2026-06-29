@@ -3387,38 +3387,38 @@ function wizResumeDraft(draft){
 function openWizardForAsg(asgId){
   const a = ASSIGNMENTS.find(x=>x.id===asgId);
   if(!a) return;
-  // Populate wizard state from the existing assignment
-  S.wiz = {
-    step: 5,
-    clientMode: a.clientId ? 'existing' : 'new',
-    selectedClientId: a.clientId || null,
-    clMode: a.checklist && a.checklist !== CHECKLIST ? 'custom' : 'default',
-    customCL: a.checklist && a.checklist !== CHECKLIST ? a.checklist : null,
-    docs: a.docs || [],
-    docStore: a.docStore ? {...a.docStore} : {},
-    cpDocMap: {},
-    cpResults: {},
-    refDocs: a.refDocs || {},
-    _draftAsgId: a.id
-  };
-  // Restore cpDocMap Sets
-  if(a.cpDocMap){
-    Object.entries(a.cpDocMap).forEach(([k,v])=>{
-      S.wiz.cpDocMap[parseInt(k)] = v instanceof Set ? v : new Set(Array.isArray(v)?v:[]);
-    });
-  }
-  // Restore cpResults from saved findings
+
+  // Restore cpDocMap and cpResults
+  const cpDocMap={};
+  if(a.cpDocMap) Object.entries(a.cpDocMap).forEach(([k,v])=>{
+    cpDocMap[parseInt(k)] = v instanceof Set ? v : new Set(Array.isArray(v)?v:[]);
+  });
+  const cpResults={};
   const findings = FINDINGS[a.findId||a.id] || [];
   findings.forEach(f=>{
-    S.wiz.cpResults[f.cpNo] = {
-      status: f.status, finding: f.finding||'', rec: f.rec||'',
-      evidence: f.evidence||'', remarks: f.remarks||'',
-      accepted: f.accepted||false, subFindings: f.subFindings||[]
+    cpResults[f.cpNo] = {
+      status:f.status, finding:f.finding||'', rec:f.rec||'',
+      evidence:f.evidence||'', remarks:f.remarks||'',
+      accepted:f.accepted||false, subFindings:f.subFindings||[]
     };
   });
-  resetWizardUI();
-  // Pre-fill engagement fields
-  const setVal = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+
+  // Set wizard state — do NOT call resetWizardUI() as it clears fields and forces pane 1
+  S.wiz = {
+    step:5,
+    clientMode: a.clientId ? 'existing' : 'new',
+    selectedClientId: a.clientId || null,
+    clMode: 'default', customCL: null,
+    docs: a.docs||[], docStore: a.docStore?{...a.docStore}:{},
+    cpDocMap, cpResults, refDocs: a.refDocs||{},
+    _draftAsgId: a.id
+  };
+
+  // Minimal UI reset (no field clear, no goPane(1))
+  wizRefreshClientDropdown();
+
+  // Pre-fill all engagement form fields
+  const setVal=(id,val)=>{ const el=document.getElementById(id); if(el) el.value=val||''; };
   setVal('w-name', a.name);
   setVal('w-auditor-name', a.auditor);
   setVal('w-auditor-email', a.auditorEmail);
@@ -3430,7 +3430,10 @@ function openWizardForAsg(asgId){
   if(a.clientId){
     const sel=document.getElementById('w-client-existing');
     if(sel) sel.value=a.clientId;
+    wizClientMode('existing');
   }
+
+  S.currentAsgId = a.id;
   document.getElementById('wizard-modal').style.display='flex';
   goPane(5);
 }
