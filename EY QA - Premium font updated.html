@@ -3384,59 +3384,6 @@ function wizResumeDraft(draft){
 /* ============================================================
    WIZARD — 5-step client-first flow
    ============================================================ */
-function openWizardForAsg(asgId){
-  const a = ASSIGNMENTS.find(x=>x.id===asgId);
-  if(!a) return;
-
-  // Restore cpDocMap and cpResults
-  const cpDocMap={};
-  if(a.cpDocMap) Object.entries(a.cpDocMap).forEach(([k,v])=>{
-    cpDocMap[parseInt(k)] = v instanceof Set ? v : new Set(Array.isArray(v)?v:[]);
-  });
-  const cpResults={};
-  const findings = FINDINGS[a.findId||a.id] || [];
-  findings.forEach(f=>{
-    cpResults[f.cpNo] = {
-      status:f.status, finding:f.finding||'', rec:f.rec||'',
-      evidence:f.evidence||'', remarks:f.remarks||'',
-      accepted:f.accepted||false, subFindings:f.subFindings||[]
-    };
-  });
-
-  // Set wizard state — do NOT call resetWizardUI() as it clears fields and forces pane 1
-  S.wiz = {
-    step:5,
-    clientMode: a.clientId ? 'existing' : 'new',
-    selectedClientId: a.clientId || null,
-    clMode: 'default', customCL: null,
-    docs: a.docs||[], docStore: a.docStore?{...a.docStore}:{},
-    cpDocMap, cpResults, refDocs: a.refDocs||{},
-    _draftAsgId: a.id
-  };
-
-  // Minimal UI reset (no field clear, no goPane(1))
-  wizRefreshClientDropdown();
-
-  // Pre-fill all engagement form fields
-  const setVal=(id,val)=>{ const el=document.getElementById(id); if(el) el.value=val||''; };
-  setVal('w-name', a.name);
-  setVal('w-auditor-name', a.auditor);
-  setVal('w-auditor-email', a.auditorEmail);
-  setVal('w-scope', a.scope);
-  setVal('w-eng-type', a.engType);
-  setVal('w-qa-start', a.qaStart);
-  setVal('w-qa-due', a.qaDue);
-  setVal('w-qa-end', a.qaEnd);
-  if(a.clientId){
-    const sel=document.getElementById('w-client-existing');
-    if(sel) sel.value=a.clientId;
-    wizClientMode('existing');
-  }
-
-  S.currentAsgId = a.id;
-  document.getElementById('wizard-modal').style.display='flex';
-  goPane(5);
-}
 
 function openWizard(){
   const existingDraft=wizCheckDraft();
@@ -6265,7 +6212,7 @@ ${needsReupload>0?`
       <button class="btn btn-ghost btn-sm" onclick="asgDetailBack()" style="padding:6px 14px;font-size:12px">← Back</button>
       <div class="detail-breadcrumb" style="margin-bottom:0">${S._fromWizardPane6?'Final Report':'Assignments'} · ${esc(a.id)}</div>
     </div>
-    <button class="btn btn-outline btn-sm" onclick="openWizardForAsg('${a.id}')" style="border-color:var(--blue);color:var(--blue);font-size:12px">↗ Open in Wizard</button>
+    <button class="btn btn-outline btn-sm" onclick="openWizard()" style="border-color:var(--blue);color:var(--blue);font-size:12px">↗ Open in Wizard</button>
   </div>
   <div class="detail-title">${esc(a.name)}</div>
   <div class="detail-meta-row">
