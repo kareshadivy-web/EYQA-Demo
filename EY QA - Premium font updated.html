@@ -4746,19 +4746,86 @@ async function buildPane6(){
   // --- render full asg-detail into pane 6 body ---
   const body = document.getElementById('wiz-final-report-body');
   if(body){
-    const origWs = document.getElementById('page-content');
-    origWs.id = '__pc_tmp__';
-    const fakeWs = document.createElement('div');
-    fakeWs.id = 'page-content';
-    document.body.appendChild(fakeWs);
-    const savedPage = S.page;
-    S.page = 'asg-detail';
-    renderAsgDetail();
-    body.innerHTML = fakeWs.innerHTML;
-    document.body.removeChild(fakeWs);
-    origWs.id = 'page-content';
-    S.page = savedPage;
+    const reportHtml = renderAsgDetailToString();
+    body.innerHTML = `
+      <div style="background:var(--bg3);border:1px solid var(--border);border-left:4px solid var(--lime);border-radius:6px;padding:16px 20px;margin-bottom:20px">
+        <div style="font-size:11px;font-weight:800;color:var(--t1);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">✨ AI Refinement Assistant</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:10px">Describe how you want to refine the language of observations and recommendations before exporting.</div>
+        <textarea id="p6-refine-prompt" placeholder="e.g. Make observations more concise and risk-focused. Use formal audit language. Avoid passive voice." style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--t1);font-size:12px;resize:vertical;min-height:72px;outline:none;font-family:inherit"></textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px">
+          <span id="p6-refine-status" style="font-size:11px;color:var(--t3)"></span>
+          <button id="p6-refine-btn" onclick="refineAndRegenerate('${id}')" style="padding:7px 18px;background:var(--lime);border:none;border-radius:4px;font-size:12px;font-weight:700;color:#111;cursor:pointer">✨ Apply &amp; Regenerate</button>
+        </div>
+      </div>
+      <div id="p6-report-content">${reportHtml}</div>`;
   }
+}
+
+function renderAsgDetailToString(){
+  const origWs = document.getElementById('page-content');
+  origWs.id = '__pc_tmp__';
+  const fakeWs = document.createElement('div');
+  fakeWs.id = 'page-content';
+  document.body.appendChild(fakeWs);
+  const savedPage = S.page;
+  S.page = 'asg-detail';
+  renderAsgDetail();
+  const html = fakeWs.innerHTML;
+  document.body.removeChild(fakeWs);
+  origWs.id = 'page-content';
+  S.page = savedPage;
+  return html;
+}
+
+async function refineAndRegenerate(asgId){
+  const promptEl = document.getElementById('p6-refine-prompt');
+  const instruction = promptEl ? promptEl.value.trim() : '';
+  if(!instruction){ showToast('Enter a refinement instruction first.','amber'); return; }
+
+  const findings = FINDINGS[asgId] || [];
+  if(!findings.length){ showToast('No findings to refine.','amber'); return; }
+
+  const btn = document.getElementById('p6-refine-btn');
+  const statusEl = document.getElementById('p6-refine-status');
+  if(btn){ btn.disabled=true; btn.textContent='⟳ Refining…'; }
+  if(statusEl) statusEl.textContent='Sending to AI…';
+
+  const refined = [];
+  let done = 0;
+  const nonPass = findings.filter(f=>f.status!=='Pass').length;
+
+  for(const f of findings){
+    if(f.status==='Pass'){ refined.push(f); continue; }
+    try{
+      const [obs, rec] = await Promise.all([
+        f.finding ? apiFetch('https://api.anthropic.com/v1/messages',{
+          model:'claude-haiku-4-5-20251001', max_tokens:200,
+          messages:[{role:'user',content:`You are an internal audit report writer. Apply this refinement instruction to the observation: "${instruction}"\n\nRules: (1) Keep it factual and professional. (2) Maximum 60 words. (3) No control numbers, file names, or document references. (4) Output only the rewritten observation, no preamble. End with a full stop.\n\nObservation:\n${f.finding}`}]
+        }).then(r=>r.json()).then(d=>(d.content?.[0]?.text||f.finding).trim())
+        : Promise.resolve(f.finding||''),
+        f.rec ? apiFetch('https://api.anthropic.com/v1/messages',{
+          model:'claude-haiku-4-5-20251001', max_tokens:150,
+          messages:[{role:'user',content:`You are an internal audit report writer. Apply this refinement instruction to the recommendation: "${instruction}"\n\nRules: (1) One generic action at principle level, no control numbers or specific items. (2) Maximum 40 words. (3) Output only the rewritten recommendation, no preamble. End with a full stop.\n\nRecommendation:\n${f.rec}`}]
+        }).then(r=>r.json()).then(d=>(d.content?.[0]?.text||f.rec).trim())
+        : Promise.resolve(f.rec||'')
+      ]);
+      refined.push({...f, finding:obs, rec});
+    } catch(e){
+      refined.push(f);
+    }
+    done++;
+    if(statusEl) statusEl.textContent=`Refined ${done}/${nonPass} findings…`;
+  }
+
+  FINDINGS[asgId] = refined;
+  persistSave();
+  if(statusEl) statusEl.textContent='✓ Done — report regenerated';
+  if(btn){ btn.disabled=false; btn.textContent='✨ Apply & Regenerate'; }
+  showToast('✓ Findings refined — report updated','green');
+
+  // Refresh only the report section, keep the chat panel intact
+  const reportDiv = document.getElementById('p6-report-content');
+  if(reportDiv) reportDiv.innerHTML = renderAsgDetailToString();
 }
 
 async function wizFinish(stayInPane){
