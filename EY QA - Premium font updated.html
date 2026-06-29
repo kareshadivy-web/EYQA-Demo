@@ -7877,15 +7877,27 @@ async function parseFile(file, onProgress){
 
   /* ── XLSX / XLS / CSV ─────────────────────────────────────────────── */
   if(['xlsx','xls','csv'].includes(ext)){
-    const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf, {type:'array'});
-    const out = {_sheets:{}};
-    wb.SheetNames.forEach(n=>{
-      out._sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});
-    });
-    out._text = wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
-    if(!out._text.trim()) out._text = '[Spreadsheet — no readable rows found]';
-    return out;
+    if(!window.XLSX){
+      return {_text:`[${file.name} — Excel library not loaded. Refresh the page and try again.]`, _unreadable:true, _reason:'no-xlsx-lib'};
+    }
+    try{
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, {type:'array', cellText:true, cellDates:true});
+      if(!wb || !wb.SheetNames || wb.SheetNames.length===0){
+        return {_text:`[${file.name} — workbook has no sheets or could not be read]`, _unreadable:true, _reason:'xlsx-no-sheets'};
+      }
+      const out = {_sheets:{}};
+      wb.SheetNames.forEach(n=>{
+        out._sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});
+      });
+      out._text = wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
+      if(!out._text.trim()){
+        return {_text:`[${file.name} — spreadsheet opened but all cells appear empty]`, _unreadable:true, _reason:'xlsx-empty'};
+      }
+      return out;
+    } catch(e){
+      return {_text:`[${file.name} — could not read spreadsheet: ${e.message}. The file may be encrypted, password-protected, or corrupted. Try re-saving as .xlsx from Excel.]`, _unreadable:true, _reason:'xlsx-parse-error'};
+    }
   }
 
   /* ── DOCX ─────────────────────────────────────────────────────────── */
@@ -8327,12 +8339,16 @@ async function parseDocLibFile(file){
   const buf = await file.arrayBuffer();
   const out = { _text: '', _sheets: null };
   if((ext==='xlsx'||ext==='xls'||ext==='csv') && window.XLSX){
-    const wb = XLSX.read(buf, {type:'array'});
+    try{
+    const wb = XLSX.read(buf, {type:'array', cellText:true, cellDates:true});
     out._sheets = {};
     wb.SheetNames.forEach(n => {
       out._sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});
     });
     out._text = wb.SheetNames.map(n => XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
+    } catch(e){
+      out._text = '[' + file.name + ' — could not read spreadsheet: ' + e.message + '. Try re-saving as .xlsx from Excel.]';
+    }
   } else if((ext==='docx'||ext==='doc') && window.mammoth){
     const r = await mammoth.extractRawText({arrayBuffer: buf});
     out._text = r.value || '';
