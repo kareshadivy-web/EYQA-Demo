@@ -4700,15 +4700,20 @@ async function buildPane6(){
     rec:r.rec||'',remarks:r.remarks||'',srcDoc:'Reference Documents',
     accepted:r.accepted||false,subFindings:r.subFindings||[]
   })).filter(r=>r.status!=='Skipped');
+  // On resume, cpResults may be empty — fall back to previously saved findings
+  const existingAsg=ASSIGNMENTS.find(a=>a.id===id);
+  const effectiveFindings=wizFindings.length>0?wizFindings:(FINDINGS[id]||[]);
   if(wizFindings.length>0) FINDINGS[id]=wizFindings;
-  const excCount=wizFindings.filter(f=>f.status==='Exception').length;
+  const excCount=effectiveFindings.filter(f=>f.status==='Exception').length;
   const cls=excCount===0?'Generally Conforms':excCount<=3?'Partially Conforms':'Does Not Conform';
+  const hasReview=effectiveFindings.length>0;
+  const existingStatus=existingAsg?existingAsg.status:'in-progress';
   const newAsg={id,name,entity,auditor,auditorEmail,risk,period,scope,engType,qaStart,qaDue,qaEnd,
-    issued:'—',
-    status:'in-progress',  // stays in-progress until explicitly marked complete
-    cls:wizFindings.length>0?cls:'In Review',
+    issued:existingAsg?existingAsg.issued:'—',
+    status:existingStatus==='completed'?'completed':'in-progress',
+    cls:hasReview?cls:'In Review',
     clientId:S.wiz.selectedClientId,
-    findId:id,hasReview:wizFindings.length>0,progress:wizFindings.length>0?1:0,docs,refDocs:S.wiz.refDocs||{},
+    findId:id,hasReview,progress:hasReview?1:0,docs,refDocs:S.wiz.refDocs||{},
     docStore:{...S.wiz.docStore},cpDocMap:cpDocMapSave,
     checklist:S.wiz.clMode==='custom'&&S.wiz.customCL?S.wiz.customCL:CHECKLIST,isDraft:false};
   const draftIdx=ASSIGNMENTS.findIndex(a=>a.id===id);
