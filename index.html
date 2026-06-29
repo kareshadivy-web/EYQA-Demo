@@ -4745,25 +4745,21 @@ async function buildPane6(){
     footer.appendChild(btnComplete);
   }
 
-  // --- show simple confirmation in pane 6 body ---
+  // --- render full asg-detail into pane 6 body ---
   const body = document.getElementById('wiz-final-report-body');
   if(body){
-    const passC=wizFindings.filter(f=>f.status==='Pass').length;
-    const revC=wizFindings.filter(f=>f.status==='Manual Review').length;
-    body.innerHTML=`
-      <div style="text-align:center;padding:48px 24px">
-        <div style="font-size:48px;margin-bottom:16px">✅</div>
-        <div style="font-size:20px;font-weight:800;color:var(--t1);margin-bottom:8px">${esc(name)}</div>
-        <div style="font-size:13px;color:var(--t2);margin-bottom:32px">${esc(entity)} · ${id}</div>
-        <div style="display:flex;justify-content:center;gap:32px;margin-bottom:32px;flex-wrap:wrap">
-          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--lime)">${wizFindings.length}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Checkpoints</div></div>
-          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:#CC2200">${excCount}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Exceptions</div></div>
-          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--amber)">${revC}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Manual Review</div></div>
-          <div style="text-align:center"><div style="font-size:28px;font-weight:900;color:var(--green)">${passC}</div><div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em">Pass</div></div>
-        </div>
-        <div style="display:inline-block;padding:8px 20px;border-radius:4px;font-size:13px;font-weight:700;background:${excCount===0?'#e8f5e9':excCount<=3?'#fff8e1':'#fdecea'};color:${excCount===0?'#1A7A4A':excCount<=3?'#996600':'#CC2200'}">${esc(cls)}</div>
-        <div style="margin-top:32px;font-size:13px;color:var(--t2)">Use the buttons below to save &amp; close, or mark this assignment as complete on the dashboard.</div>
-      </div>`;
+    const origWs = document.getElementById('page-content');
+    origWs.id = '__pc_tmp__';
+    const fakeWs = document.createElement('div');
+    fakeWs.id = 'page-content';
+    document.body.appendChild(fakeWs);
+    const savedPage = S.page;
+    S.page = 'asg-detail';
+    renderAsgDetail();
+    body.innerHTML = fakeWs.innerHTML;
+    document.body.removeChild(fakeWs);
+    origWs.id = 'page-content';
+    S.page = savedPage;
   }
 }
 
