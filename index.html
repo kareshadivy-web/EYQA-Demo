@@ -3693,6 +3693,8 @@ function goPane(n){
   const wf=document.getElementById('wiz-finish');
   if(n===total){ buildPane6(); return; }
   if(wf) wf.style.display='none';
+  // Remove pane-6 footer buttons when navigating away from final pane
+  document.querySelectorAll('.p6-btn').forEach(b=>b.remove());
   if(n===5) setTimeout(updateWizQAProgress,200);
   if(n===5) requestAnimationFrame(()=>initDocMatrix());
   if(n===3) requestAnimationFrame(()=>renderWizRefDocs());
