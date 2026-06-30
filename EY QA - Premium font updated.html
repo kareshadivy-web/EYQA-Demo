@@ -2184,25 +2184,37 @@ a { color: inherit; text-decoration: none; }
    ============================================================ */
 let CHECKLIST = [
   { no:1,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Flag missing rationale for scope exclusions / de-scoped controls',                                         docs:'APM' },
-  { no:2,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Cross-check inclusion of prior year audit issues',                                                          docs:'APM, Prior Year Audit Report' },
+  { no:2,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Cross-check inclusion of prior year audit issues',                                                          docs:'APM, Prior Year Audit Reports' },
   { no:3,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Validate completeness of APM — objectives, scope, timing, risks, audit team',                             docs:'APM' },
-  { no:4,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Validate scope alignment across Annual Audit Plan, kick-off agenda and APM',                              docs:'Annual Audit Plan, APM, Minutes' },
-  { no:5,  phase:'Fieldwork', act:'Process Understanding',               cp:'Validate process walkthrough minutes or flowcharts are documented',                                        docs:'Walkthrough MoM / Flowchart' },
-  { no:6,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check completeness and quality of control descriptions (5W1H: Who, What, When, Where, Why, How)',        docs:'RCM' },
-  { no:7,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check all risks and controls linked to the process are in the RCM',                                       docs:'RCM' },
-  { no:8,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Validate all risks from the Risk Register are included in the RCM',                                       docs:'Risk Register, RCM' },
+  { no:4,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Validate scope alignment across Annual Audit Plan, kick-off agenda and APM',                              docs:'Annual Audit Plan, APM, Minutes / Transcript of Opening Meeting',
+    instructions:'Compare the scope mentioned in Annual Audit Plan, APM, and kick-off meeting notes. If you see differences, inconsistencies, or missing items, report it as an observation.' },
+  { no:5,  phase:'Fieldwork', act:'Process Understanding',               cp:'Validate process walkthrough minutes or flowcharts are documented',                                        docs:'Walkthrough minutes, Process flowchart, APM',
+    instructions:'Validate if all scoped items from APM are covered in walkthrough minutes or process documentation.' },
+  { no:6,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check completeness and quality of control descriptions (5W1H: Who, What, When, Where, Why, How)',        docs:'RCM',
+    instructions:'Review ONLY the "Control description" column of the RCM. Do not check any other columns for this checkpoint.' },
+  { no:7,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check all risks and controls linked to the process are in the RCM',                                       docs:'RCM, APM, Walkthrough minutes',
+    instructions:'Check the RCM, APM, and walkthrough minutes and confirm that all relevant risks and controls related to the process are listed. If something important seems missing, highlight it.' },
+  { no:8,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Validate all risks from the Risk Register are included in the RCM',                                       docs:'Risk Register, RCM',
+    instructions:'Compare risks listed in column "Risk" of the Risk Register with column "Risk description" in the RCM. Flag as Exception if any risk is present in the Risk Register but missing in the RCM.' },
   { no:9,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Evaluate if any key inherent risk is missing from the Risk Register',                                     docs:'Risk Register' },
-  { no:10, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check sub-processes and test steps are aligned with APM scope',                                           docs:'APM, RCM' },
-  { no:11, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check test steps cover all attributes of controls (5W1H)',                                                docs:'RCM' },
-  { no:12, phase:'Fieldwork', act:'Design Assessment',                   cp:'Validate design evaluation test procedures, results, conclusions documented',                              docs:'RCM / Workpapers' },
-  { no:13, phase:'Fieldwork', act:'Design Assessment',                   cp:'Assess coherence between test procedures, results, and conclusions',                                       docs:'RCM / Workpapers' },
-  { no:14, phase:'Fieldwork', act:'Sampling',                            cp:'Check sample selection is consistent with sampling guidelines',                                            docs:'Sampling Matrix, RCM' },
+  { no:10, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check sub-processes and test steps are aligned with APM scope',                                           docs:'APM, RCM',
+    instructions:'Check if all scoped items in APM are covered in RCM column "Control Description" only. Do not review other columns. If anything is left out, highlight it as an exception.' },
+  { no:11, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check test steps cover all attributes of controls (5W1H)',                                                docs:'RCM',
+    instructions:'Check whether test procedures in RCM column "Test of Design Procedure" cover all 5W1H attributes. Do not review other columns.' },
+  { no:12, phase:'Fieldwork', act:'Design Assessment',                   cp:'Validate design evaluation test procedures, results, conclusions documented',                              docs:'RCM, Workpapers',
+    instructions:'Review RCM and workpapers and confirm that design testing procedures as planned in RCM (refer column "Test of Design Procedure" — do not refer other columns), results, and conclusions are clearly documented in workpapers.' },
+  { no:13, phase:'Fieldwork', act:'Design Assessment',                   cp:'Assess coherence between test procedures, results, and conclusions; cross-check Test of Design and Test of OE procedures from RCM are reflected in workpapers', docs:'RCM, Workpapers' },
+  { no:14, phase:'Fieldwork', act:'Sampling',                            cp:'Check sample selection is consistent with sampling guidelines',                                            docs:'Sampling methodology, RCM, Workpapers' },
   { no:15, phase:'Fieldwork', act:'Sampling',                            cp:'Check population completeness has been performed',                                                         docs:'Workpapers' },
-  { no:16, phase:'Fieldwork', act:'Operating Effectiveness Testing',     cp:'Check OE section is documented for all workpapers',                                                       docs:'Workpapers' },
-  { no:17, phase:'Fieldwork', act:'Operating Effectiveness Testing',     cp:'Check adequate supporting evidence is uploaded for all workpapers',                                       docs:'Workpapers + Evidence' },
-  { no:18, phase:'Fieldwork', act:'Removal of PII',                      cp:'Validate all customer-sensitive information is anonymised across audit documentation',                    docs:'RCM, Workpapers' },
-  { no:19, phase:'Fieldwork', act:'Data Analytics',                      cp:'Verify data analytics planned, executed, or rationale for non-use documented',                            docs:'RCM / Workpapers' },
-  { no:20, phase:'Fieldwork', act:'Data Analytics',                      cp:'Evaluate if test procedures could have been run on entire population instead of sampling',               docs:'RCM' },
+  { no:16, phase:'Fieldwork', act:'Operating Effectiveness Testing',     cp:'Check OE section is documented for all workpapers',                                                       docs:'RCM, Workpapers',
+    instructions:'Review RCM and workpapers and confirm that operating effectiveness testing procedures as planned in RCM (refer column "Test of Operating Effectiveness Procedure" — do not refer other columns), results, and conclusions are clearly documented in workpapers.' },
+  { no:17, phase:'Fieldwork', act:'Operating Effectiveness Testing',     cp:'Check adequate supporting evidence is uploaded for all workpapers',                                       docs:'Workpapers, Evidence',
+    instructions:'If any evidence is referenced in a workpaper, check that all referenced evidence files are available. Conversely, if evidence files are available, check that each is referenced in at least one workpaper.' },
+  { no:18, phase:'Fieldwork', act:'Removal of PII',                      cp:'Validate all customer-sensitive information is anonymised across audit documentation',                    docs:'RCM, Workpapers',
+    instructions:'Review the RCM and workpapers to ensure that any sensitive customer information is properly masked or removed. Focus on identifying actual personal data such as customer names, account numbers, or other identifiable details. If such information is clearly visible, flag it as an observation. However, if the workpapers only contain indirect references or placeholders for personal data (e.g. masked values, IDs without identifiable linkage, or generic labels), do not treat this as an issue.' },
+  { no:19, phase:'Fieldwork', act:'Data Analytics',                      cp:'Verify data analytics planned, executed, or rationale for non-use documented',                            docs:'RCM, Workpapers' },
+  { no:20, phase:'Fieldwork', act:'Data Analytics',                      cp:'Evaluate if test procedures could have been run on entire population instead of sampling',               docs:'RCM',
+    instructions:'Refer only to column "Test of Operating Effectiveness Procedure" in the RCM. Do not refer to other columns for this checkpoint.' },
   { no:21, phase:'Fieldwork', act:'Documentation and Review',            cp:'Check all workpapers have reviewer sign-off',                                                             docs:'Workpapers' },
   { no:22, phase:'Fieldwork', act:'Documentation and Review',            cp:'Validate workpapers include sample size, selection method and rationale',                                 docs:'Workpapers' },
   { no:23, phase:'Reporting', act:'Issues',                              cp:'Validate all issues in workpapers are included in issue log / audit report',                             docs:'Audit Report, Workpapers' },
@@ -4996,7 +5008,7 @@ CHECKPOINT TO ASSESS
 ═══════════════════════════════════════════
 CP${String(cpNo).padStart(2,'0')} | Phase: ${cp.phase} | Activity: ${cp.act}
 Checkpoint: ${cp.cp}
-Typically requires: ${(CP_REQUIRED_DOCS[cpNo]||['No specific doc required']).join(', ')}
+Typically requires: ${(CP_REQUIRED_DOCS[cpNo]||['No specific doc required']).join(', ')}${cp.instructions ? '\nSPECIFIC INSTRUCTION: ' + cp.instructions : ''}
 
 Return the JSON assessment now.`;
 
@@ -7415,7 +7427,7 @@ async function computeFindingsAI(asg, onProgress){
   ].join('\n');
 
   const checklistBlock = checklist.map(cp =>
-    `${cp.no}. [${cp.phase}] ${cp.act} — ${cp.cp} | Assigned doc: ${cpDocInfo[cp.no]}`
+    `${cp.no}. [${cp.phase}] ${cp.act} — ${cp.cp} | Assigned doc: ${cpDocInfo[cp.no]}${cp.instructions ? '\n   SPECIFIC INSTRUCTION: ' + cp.instructions : ''}`
   ).join('\n');
 
   const systemPrompt = `You are GatiQA, an IIA-certified Internal Audit Quality Assurance engine with deep expertise in IIA Standards 2200, 2330, 2340, and 2410.
