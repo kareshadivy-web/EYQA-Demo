@@ -2988,10 +2988,11 @@ const CLIENTS = [
 ];
 
 /* ============================================================
-   360° CLIENT INTELLIGENCE — DATA MODEL
+   360° QA INTELLIGENCE — DATA MODEL
+   (sourced live from ASSIGNMENTS + FINDINGS; no static dummy data)
    ============================================================ */
 
-// Historical engagements for intelligence (multi-year, per client)
+// Placeholder — kept so old references don't throw. Real data is derived below.
 const INTEL_ENGAGEMENTS = [
   // XYZ Limited (CLT-001) — 5 years
   { id:'ENG-XYZ-2022', clientId:'CLT-001', client:'XYZ Limited', year:2022, fy:'FY2022', area:'Procurement',        riskScore:72, remediationRate:55, openFindings:8,  totalFindings:12, status:'completed' },
@@ -3067,7 +3068,7 @@ const INTEL_VELOCITY = {
 };
 
 // State for intelligence view
-S.intel = { clientId:'CLT-001', yrFrom:2022, yrTo:2026, tab:'overview', drillArea:null, drillYear:null };
+S.intel = { clientId:'CLT-001', yrFrom:2022, yrTo:2026, tab:'overview', drillCp:null, drillPhase:null };
 
 /* ============================================================
    FILENAME → DOCTYPE inference
@@ -9218,99 +9219,139 @@ function refreshApiKeyIndicator(){
 document.addEventListener('DOMContentLoaded', refreshApiKeyIndicator);
 
 /* ============================================================
-   360° CLIENT INTELLIGENCE — RENDER & LOGIC
+   360° QA INTELLIGENCE — HELPER FUNCTIONS
+   (all metrics derived from live ASSIGNMENTS + FINDINGS)
    ============================================================ */
-function intelEngagements(clientId, yrFrom, yrTo){
-  return INTEL_ENGAGEMENTS.filter(e=>e.clientId===clientId && e.year>=yrFrom && e.year<=yrTo);
-}
-function intelFindings(clientId){
-  return INTEL_FINDINGS.filter(f=>f.clientId===clientId);
-}
-function intelHealthScore(engs){
-  if(!engs.length) return 0;
-  const latest = engs[engs.length-1];
-  return 100 - latest.riskScore;
-}
-function intelRecurring(findings){
-  return findings.filter(f=>f.recurrenceLink);
-}
-function intelChronic(findings){
-  return findings.filter(f=>{
-    if(!f.firstRaised) return false;
-    const yrs=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365);
-    return yrs>2 && f.status!=='Closed';
+
+// QA theme groupings mapped to CHECKLIST phase/activity labels
+const QA_THEMES = [
+  { id:'rcm',        label:'RCM Documentation',       icon:'📋', color:'#CC2200',
+    match: cp => cp.act && cp.act.includes('RCM') },
+  { id:'planning',   label:'Planning & Scoping',       icon:'🗓', color:'#D97706',
+    match: cp => cp.phase === 'Planning' },
+  { id:'design',     label:'Design Assessment',        icon:'🔍', color:'#7C3AED',
+    match: cp => cp.act && cp.act.includes('Design') },
+  { id:'sampling',   label:'Sampling',                 icon:'🎲', color:'#0369A1',
+    match: cp => cp.act && cp.act.includes('Sampling') },
+  { id:'oe',         label:'OE Testing & Evidence',    icon:'🧪', color:'#047857',
+    match: cp => cp.act && (cp.act.includes('Operating') || cp.act.includes('Evidence') || cp.act.includes('Data Analytics')) },
+  { id:'pii',        label:'PII / Data Privacy',       icon:'🔒', color:'#BE185D',
+    match: cp => cp.act && cp.act.includes('PII') },
+  { id:'reporting',  label:'Reporting Quality',        icon:'📄', color:'#B45309',
+    match: cp => cp.phase === 'Reporting' },
+  { id:'docs',       label:'Documentation & Review',   icon:'✍', color:'#374151',
+    match: cp => cp.act && cp.act.includes('Documentation') },
+];
+
+// Returns all completed/in-progress assignments for a client within year range
+function qaIntelAsgs(clientId, yrFrom, yrTo){
+  return ASSIGNMENTS.filter(a=>{
+    if(a.isDraft) return false;
+    if(clientId && a.clientId !== clientId && a.entity !== (CLIENTS.find(c=>c.id===clientId)||{}).name) return false;
+    const yr = a.period ? parseInt((a.period.match(/\d{4}/)||[])[0]) : null;
+    if(yr && yrFrom && yr < yrFrom) return false;
+    if(yr && yrTo   && yr > yrTo)   return false;
+    return true;
   });
 }
-function intelRemRate(engs){
-  if(!engs.length) return 0;
-  return Math.round(engs.reduce((s,e)=>s+e.remediationRate,0)/engs.length);
+
+// Returns all QA finding rows for a set of assignment ids
+function qaIntelFindings(asgIds){
+  const rows = [];
+  asgIds.forEach(id=>{
+    const finds = FINDINGS[id] || [];
+    finds.forEach(f => rows.push({ asgId: id, ...f }));
+  });
+  return rows;
 }
-function intelChronicControls(clientId, yrFrom, yrTo){
-  const hm=INTEL_HEATMAP[clientId]||{};
-  const fys=Object.keys(hm).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=yrFrom&&y<=yrTo;}).sort();
-  const areas=['Access Controls','Vendor Management','Financial Reporting','IT General Controls','Payroll','Procurement','Fixed Assets','AML / Compliance','Governance'];
-  let chronic=0;
-  areas.forEach(area=>{
-    let streak=0, maxStreak=0;
-    fys.forEach(fy=>{
-      if(hm[fy]&&hm[fy][area]==='critical'){ streak++; maxStreak=Math.max(maxStreak,streak); } else streak=0;
+
+// Enriches a finding row with checklist metadata
+function qaEnrich(row){
+  const cp = CHECKLIST.find(c => c.no === row.cpNo) || {};
+  const theme = QA_THEMES.find(t => t.match(cp)) || { id:'other', label:'Other', icon:'•', color:'#6B7280' };
+  return { ...row, cp, theme };
+}
+
+// Returns exception rate (0-100) for a set of finding rows
+function qaExceptionRate(rows){
+  if(!rows.length) return 0;
+  const exc = rows.filter(r => r.status === 'Exception').length;
+  return Math.round(exc / rows.length * 100);
+}
+
+// Groups finding rows by QA_THEME; returns [{theme, total, exceptions, rate, cpNos[]}]
+function qaByTheme(rows){
+  return QA_THEMES.map(theme=>{
+    const themeRows = rows.filter(r=>{
+      const cp = CHECKLIST.find(c=>c.no===r.cpNo)||{};
+      return theme.match(cp);
     });
-    if(maxStreak>=3) chronic++;
-  });
-  return chronic;
+    const exceptions = themeRows.filter(r=>r.status==='Exception').length;
+    const cpNos = [...new Set(themeRows.filter(r=>r.status==='Exception').map(r=>r.cpNo))].sort((a,b)=>a-b);
+    return { theme, total:themeRows.length, exceptions, rate: themeRows.length ? Math.round(exceptions/themeRows.length*100) : 0, cpNos };
+  }).filter(t=>t.total>0).sort((a,b)=>b.rate-a.rate);
 }
-function intelNegligentDepts(findings){
-  const depts={};
-  findings.forEach(f=>{
-    if(!depts[f.dept]) depts[f.dept]={raised:0,closed:0,open:0,ages:[]};
-    depts[f.dept].raised++;
-    if(f.status==='Closed'){ depts[f.dept].closed++; }
-    else { depts[f.dept].open++; if(f.firstRaised){ const a=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365); depts[f.dept].ages.push(a); } }
+
+// Groups finding rows by checkpoint number; returns [{cpNo, label, total, exceptions, rate}]
+function qaByCp(rows){
+  const map = {};
+  rows.forEach(r=>{
+    if(!map[r.cpNo]) map[r.cpNo]={ cpNo:r.cpNo, total:0, exceptions:0 };
+    map[r.cpNo].total++;
+    if(r.status==='Exception') map[r.cpNo].exceptions++;
   });
-  return Object.entries(depts).filter(([,d])=>{
-    const rate=d.raised?Math.round(d.closed/d.raised*100):100;
-    return rate<40;
-  }).length;
+  return Object.values(map).map(x=>({
+    ...x,
+    label: (CHECKLIST.find(c=>c.no===x.cpNo)||{}).cp || 'CP '+x.cpNo,
+    phase: (CHECKLIST.find(c=>c.no===x.cpNo)||{}).phase || '',
+    act:   (CHECKLIST.find(c=>c.no===x.cpNo)||{}).act || '',
+    rate:  x.total ? Math.round(x.exceptions/x.total*100) : 0,
+  })).sort((a,b)=>b.rate-a.rate || b.exceptions-a.exceptions);
 }
+
+/* ============================================================
+   360° QA INTELLIGENCE — RENDER
+   ============================================================ */
 
 function renderIntelligence(){
-  const ci=S.intel;
-  const allClients=CLIENTS;
-  const selClient=allClients.find(c=>c.id===ci.clientId)||allClients[0];
-  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
-  const findings=intelFindings(ci.clientId);
-  const healthScore=intelHealthScore(engs);
-  const remRate=intelRemRate(engs);
-  const recurringCt=intelRecurring(findings).length;
-  const chronicCtrl=intelChronicControls(ci.clientId,ci.yrFrom,ci.yrTo);
-  const negDepts=intelNegligentDepts(findings);
+  const ci = S.intel;
+  const allClients = CLIENTS;
+  // Auto-select first client if state clientId not in list
+  if(!allClients.find(c=>c.id===ci.clientId) && allClients.length) ci.clientId = allClients[0].id;
+  const selClient = allClients.find(c=>c.id===ci.clientId) || allClients[0] || {};
 
-  const tabs=[
-    {id:'overview',   label:'Overview'},
-    {id:'heatmap',    label:'Control Heatmap'},
-    {id:'findings',   label:'Recurring Findings'},
-    {id:'depts',      label:'Dept Scorecard'},
-    {id:'rootcause',  label:'Root Cause'},
-    {id:'velocity',   label:'Velocity'},
-    {id:'flags',      label:'Risk Flags'},
-    {id:'narrative',  label:'AI Narrative'},
+  const asgs     = qaIntelAsgs(ci.clientId, ci.yrFrom, ci.yrTo);
+  const asgIds   = asgs.map(a=>a.id);
+  const allRows  = qaIntelFindings(asgIds);
+  const excRows  = allRows.filter(r=>r.status==='Exception');
+  const exRate   = qaExceptionRate(allRows);
+  const themes   = qaByTheme(allRows);
+  const topTheme = themes[0] || null;
+  const totalQAs = asgs.length;
+  const passAll  = asgs.filter(a=>{ const fr=FINDINGS[a.id]||[]; return fr.length>0 && fr.every(r=>r.status==='Pass'); }).length;
+
+  const tabs = [
+    { id:'overview',  label:'Overview'        },
+    { id:'thematic',  label:'Thematic Summary' },
+    { id:'heatmap',   label:'CP Heatmap'       },
+    { id:'trend',     label:'Trend by QA Run'  },
+    { id:'narrative', label:'AI Narrative'     },
   ];
 
-  const healthColor = healthScore>=70?'#1A7A4A':healthScore>=50?'#D97706':'#CC2200';
-  const remColor    = remRate>=70?'#1A7A4A':remRate>=40?'#D97706':'#CC2200';
+  const exColor = exRate>=50?'#CC2200':exRate>=25?'#D97706':'#1A7A4A';
 
-  let html=`
+  const html=`
 <div style="padding:24px 28px;max-width:1400px;margin:0 auto">
   <!-- Header -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div>
-      <div style="font-size:20px;font-weight:800;color:var(--t1);letter-spacing:-0.3px">360° Client Intelligence</div>
-      <div style="font-size:12px;color:var(--t3);margin-top:3px">Longitudinal risk analysis · Chronic control weaknesses · Remediation intelligence</div>
+      <div style="font-size:20px;font-weight:800;color:var(--t1);letter-spacing:-0.3px">QA Intelligence</div>
+      <div style="font-size:12px;color:var(--t3);margin-top:3px">Thematic QA findings · Checkpoint failure patterns · Longitudinal quality trends</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <select onchange="S.intel.clientId=this.value;S.intel.tab='overview';nav('intelligence')"
         style="padding:7px 10px;border:1px solid var(--border2);border-radius:5px;font-size:12px;font-weight:600;background:var(--bg2);color:var(--t1)">
-        ${allClients.map(c=>`<option value="${c.id}"${c.id===ci.clientId?' selected':''}>${c.name}</option>`).join('')}
+        ${allClients.map(c=>`<option value="${c.id}"${c.id===ci.clientId?' selected':''}>${esc(c.name)}</option>`).join('')}
       </select>
       <select onchange="S.intel.yrFrom=+this.value;nav('intelligence')"
         style="padding:7px 8px;border:1px solid var(--border2);border-radius:5px;font-size:12px;background:var(--bg2);color:var(--t1)">
@@ -9326,278 +9367,341 @@ function renderIntelligence(){
   <!-- 5 KPI cards -->
   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
     ${[
-      { label:'Client Health Score', value:healthScore+'%',  sub:'Overall composite', color:healthColor,  icon:'❤' },
-      { label:'Recurring Findings',  value:recurringCt,      sub:'Repeat across years', color:'#CC2200',  icon:'↺' },
-      { label:'Avg Remediation Rate',value:remRate+'%',      sub:'Across all years',  color:remColor,     icon:'✓' },
-      { label:'Chronic Controls',    value:chronicCtrl,      sub:'Critical 3+ yrs',  color:chronicCtrl>0?'#CC2200':'#1A7A4A', icon:'⚠' },
-      { label:'Dept Negligence Flags',value:negDepts,        sub:'Below 40% rate',   color:negDepts>0?'#CC2200':'#1A7A4A',    icon:'🚨' },
+      { label:'QA Runs',            value: totalQAs,                 sub:'In selected period',       color:'#1A3A5C',  icon:'📁' },
+      { label:'Total Checkpoints',  value: allRows.length,           sub:'Assessed across all runs', color:'#374151',  icon:'✓'  },
+      { label:'Exception Rate',     value: exRate+'%',               sub:'Checkpoints rated Exception', color:exColor, icon:'⚠'  },
+      { label:'Total Exceptions',   value: excRows.length,           sub:'Across all QA runs',       color: excRows.length>0?'#CC2200':'#1A7A4A', icon:'✕' },
+      { label:'Top Weakness Theme', value: topTheme?topTheme.theme.icon+' '+topTheme.theme.label:'—', sub: topTheme?topTheme.exceptions+' exceptions ('+topTheme.rate+'%)':'No data yet', color: topTheme?topTheme.theme.color:'#9CA3AF', icon:'' },
     ].map(k=>`
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;border-top:3px solid ${k.color}">
-      <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">${k.icon} ${k.label}</div>
-      <div style="font-size:26px;font-weight:900;color:${k.color};line-height:1">${k.value}</div>
-      <div style="font-size:10px;color:var(--t4);margin-top:4px">${k.sub}</div>
+      <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">${k.icon?k.icon+' ':''}${esc(k.label)}</div>
+      <div style="font-size:${String(k.value).length>12?'13':'24'}px;font-weight:900;color:${k.color};line-height:1.2">${typeof k.value==='string'?esc(k.value):k.value}</div>
+      <div style="font-size:10px;color:var(--t4);margin-top:4px">${esc(k.sub)}</div>
     </div>`).join('')}
   </div>
 
+  <!-- No data banner -->
+  ${!allRows.length ? `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:40px;text-align:center;color:var(--t3);font-size:13px">
+    No completed QA runs found for <strong>${esc(selClient.name||'this client')}</strong> in the selected period.<br>
+    <span style="font-size:11px">Complete a QA wizard run first — findings will appear here automatically.</span>
+  </div>` : `
   <!-- Tab bar -->
   <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;overflow-x:auto">
     ${tabs.map(t=>`<div onclick="S.intel.tab='${t.id}';renderIntelligenceTab()"
       style="padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;${ci.tab===t.id?'border-bottom-color:#FFE600;color:var(--t1)':'color:var(--t3)'}"
       id="itab-${t.id}">${t.label}</div>`).join('')}
   </div>
-
-  <!-- Tab content -->
-  <div id="intel-tab-content"></div>
+  <div id="intel-tab-content"></div>`}
 </div>`;
 
-  document.getElementById('page-content').innerHTML=html;
-  renderIntelligenceTab();
+  document.getElementById('page-content').innerHTML = html;
+  if(allRows.length) renderIntelligenceTab();
 }
 
 function renderIntelligenceTab(){
-  const ci=S.intel;
-  const t=ci.tab;
-  // update tab styling
+  const ci = S.intel;
+  const t = ci.tab;
   document.querySelectorAll('[id^="itab-"]').forEach(el=>{
-    const active=el.id==='itab-'+t;
-    el.style.borderBottomColor=active?'#FFE600':'transparent';
-    el.style.color=active?'var(--t1)':'var(--t3)';
+    const active = el.id === 'itab-'+t;
+    el.style.borderBottomColor = active ? '#FFE600' : 'transparent';
+    el.style.color = active ? 'var(--t1)' : 'var(--t3)';
   });
-  const container=document.getElementById('intel-tab-content');
-  if(!container)return;
-  if(t==='overview')   renderIntelOverview(container);
-  else if(t==='heatmap')   renderIntelHeatmap(container);
-  else if(t==='findings')  renderIntelFindings(container);
-  else if(t==='depts')     renderIntelDepts(container);
-  else if(t==='rootcause') renderIntelRootCause(container);
-  else if(t==='velocity')  renderIntelVelocity(container);
-  else if(t==='flags')     renderIntelFlags(container);
-  else if(t==='narrative') renderIntelNarrative(container);
+  const container = document.getElementById('intel-tab-content');
+  if(!container) return;
+  const asgs   = qaIntelAsgs(ci.clientId, ci.yrFrom, ci.yrTo);
+  const rows   = qaIntelFindings(asgs.map(a=>a.id));
+  if(t==='overview')  renderQAOverview(container, asgs, rows);
+  else if(t==='thematic')  renderQAThematic(container, asgs, rows);
+  else if(t==='heatmap')   renderQACpHeatmap(container, asgs, rows);
+  else if(t==='trend')     renderQATrend(container, asgs, rows);
+  else if(t==='narrative') renderQANarrative(container, asgs, rows);
 }
 
-/* ── Feature 1: Client health timeline ─────────────────────── */
-function renderIntelOverview(container){
-  const ci=S.intel;
-  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
-  container.innerHTML=`
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 1 — Client Health Timeline</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Longitudinal risk score, remediation rate, and cumulative open findings across all engagements. Click any point to open engagement detail.</div>
-  <div style="position:relative;height:300px"><canvas id="chart-timeline"></canvas></div>
+/* ── Tab: Overview ──────────────────────────────────────────────────────── */
+function renderQAOverview(container, asgs, rows){
+  const ci = S.intel;
+  const themes = qaByTheme(rows);
+  const byCp   = qaByCp(rows).slice(0,8);
+  const excRows = rows.filter(r=>r.status==='Exception');
+
+  // Build per-assignment summary row
+  const asgRows = asgs.map(a=>{
+    const fr = (FINDINGS[a.id]||[]);
+    const exc = fr.filter(r=>r.status==='Exception').length;
+    const tot = fr.length;
+    const rate = tot ? Math.round(exc/tot*100) : 0;
+    const rateColor = rate>=50?'#CC2200':rate>=25?'#D97706':'#1A7A4A';
+    return { a, exc, tot, rate, rateColor };
+  }).filter(x=>x.tot>0);
+
+  container.innerHTML = `
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+  <!-- Card: QA Run Summary -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:12px">QA Run Summary — ${esc((CLIENTS.find(c=>c.id===ci.clientId)||{}).name||'Client')}</div>
+    ${!asgRows.length ? `<div style="font-size:11px;color:var(--t3)">No completed QA runs with findings in this period.</div>` :
+    `<table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:var(--bg3)">
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Engagement</th>
+        <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">CPs</th>
+        <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Exc.</th>
+        <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Rate</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Status</th>
+      </tr></thead>
+      <tbody>
+        ${asgRows.map((x,i)=>`
+        <tr style="background:${i%2===0?'var(--bg2)':'var(--bg3)'}">
+          <td style="padding:6px 8px;color:var(--t1);font-weight:600">${esc(x.a.name)}<div style="font-size:9px;color:var(--t3)">${esc(x.a.period||'')}</div></td>
+          <td style="text-align:center;padding:6px 8px;color:var(--t2)">${x.tot}</td>
+          <td style="text-align:center;padding:6px 8px;font-weight:700;color:${x.rateColor}">${x.exc}</td>
+          <td style="text-align:center;padding:6px 8px">
+            <span style="background:${x.rateColor}22;color:${x.rateColor};font-weight:700;font-size:10px;padding:2px 7px;border-radius:10px">${x.rate}%</span>
+          </td>
+          <td style="padding:6px 8px"><span class="badge ${x.a.status==='completed'?'badge-green':'badge-amber'}">${esc(x.a.status||'')}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`}
+  </div>
+
+  <!-- Card: Top failing themes -->
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:12px">QA Weakness by Theme</div>
+    ${!themes.length ? `<div style="font-size:11px;color:var(--t3)">No data.</div>` :
+    themes.map(t=>{
+      const barW = t.rate;
+      const barColor = t.rate>=50?'#CC2200':t.rate>=25?'#D97706':'#1A7A4A';
+      return `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:700;color:var(--t1)">${t.theme.icon} ${esc(t.theme.label)}</div>
+          <div style="font-size:10px;color:${barColor};font-weight:700">${t.exceptions}/${t.total} exceptions · ${t.rate}%</div>
+        </div>
+        <div style="background:var(--border);border-radius:4px;height:6px">
+          <div style="width:${barW}%;background:${barColor};border-radius:4px;height:6px;transition:width .4s"></div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
 </div>
+
+<!-- Card: Top failing checkpoints -->
 <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-  <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:12px">Engagement History</div>
-  <table style="width:100%;border-collapse:collapse;font-size:11px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:12px">Most Frequently Failing Checkpoints</div>
+  ${!byCp.length ? `<div style="font-size:11px;color:var(--t3)">No data.</div>` :
+  `<table style="width:100%;border-collapse:collapse;font-size:11px">
     <thead><tr style="background:var(--bg3)">
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">FY</th>
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Area</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Risk Score</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Remediation %</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Open Findings</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Status</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Trend</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">CP#</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Checkpoint</th>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Phase / Activity</th>
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Assessed</th>
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Exceptions</th>
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3)">Fail Rate</th>
     </tr></thead>
     <tbody>
-    ${engs.map((e,i)=>{
-      const prev=engs[i-1];
-      const trend=prev?(e.riskScore<prev.riskScore?'<span style="color:#1A7A4A">▼ Improving</span>':e.riskScore>prev.riskScore?'<span style="color:#CC2200">▲ Worsening</span>':'<span style="color:#D97706">→ Stable</span>'):'—';
-      const rc=e.riskScore>=70?'#CC2200':e.riskScore>=50?'#D97706':'#1A7A4A';
-      const link=e.linkId?`<a href="#" onclick="S.currentAsgId='${e.linkId}';nav('asg-detail');return false" style="color:var(--blue);text-decoration:none;font-weight:700">Open ↗</a>`:'—';
-      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="${e.linkId?`S.currentAsgId='${e.linkId}';nav('asg-detail')`:''}">
-        <td style="padding:8px 10px;font-weight:700">${e.fy}</td>
-        <td style="padding:8px 10px;color:var(--t2)">${e.area}</td>
-        <td style="padding:8px 10px;text-align:center;font-weight:800;color:${rc}">${e.riskScore}</td>
-        <td style="padding:8px 10px;text-align:center">${e.remediationRate}%</td>
-        <td style="padding:8px 10px;text-align:center">${e.openFindings}</td>
-        <td style="padding:8px 10px;text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${e.status==='completed'?'rgba(26,122,74,.1)':'rgba(217,119,6,.1)'};color:${e.status==='completed'?'#1A7A4A':'#D97706'}">${e.status}</span></td>
-        <td style="padding:8px 10px;text-align:center;font-size:11px">${trend}</td>
+    ${byCp.map((c,i)=>{
+      const rColor = c.rate>=50?'#CC2200':c.rate>=25?'#D97706':'#1A7A4A';
+      return `<tr style="background:${i%2===0?'var(--bg2)':'var(--bg3)'}">
+        <td style="padding:6px 8px;font-weight:700;color:var(--t1)">CP${String(c.cpNo).padStart(2,'0')}</td>
+        <td style="padding:6px 8px;color:var(--t1)">${esc(c.label)}</td>
+        <td style="padding:6px 8px;color:var(--t3);font-size:10px">${esc(c.phase)} · ${esc(c.act)}</td>
+        <td style="text-align:center;padding:6px 8px;color:var(--t2)">${c.total}</td>
+        <td style="text-align:center;padding:6px 8px;font-weight:700;color:${rColor}">${c.exceptions}</td>
+        <td style="text-align:center;padding:6px 8px">
+          <span style="background:${rColor}22;color:${rColor};font-weight:700;font-size:10px;padding:2px 8px;border-radius:10px">${c.rate}%</span>
+        </td>
       </tr>`;
     }).join('')}
     </tbody>
-  </table>
+  </table>`}
 </div>`;
-
-  setTimeout(()=>{
-    const ctx=document.getElementById('chart-timeline');
-    if(!ctx||!window.Chart)return;
-    const labels=engs.map(e=>e.fy);
-    let cum=0;
-    const cumOpen=engs.map(e=>{cum+=e.openFindings;return cum;});
-    new Chart(ctx,{
-      type:'line',
-      data:{
-        labels,
-        datasets:[
-          { label:'Risk Score',       data:engs.map(e=>e.riskScore),     borderColor:'#CC2200', backgroundColor:'rgba(204,34,0,.07)',  tension:.35, yAxisID:'y', pointRadius:6, pointHoverRadius:9, fill:true },
-          { label:'Remediation %',    data:engs.map(e=>e.remediationRate),borderColor:'#1A7A4A', backgroundColor:'rgba(26,122,74,.07)', tension:.35, yAxisID:'y', pointRadius:6, pointHoverRadius:9, fill:true },
-          { label:'Cumulative Open',  data:cumOpen,                        borderColor:'#D97706', backgroundColor:'rgba(217,119,6,.07)', tension:.35, yAxisID:'y2',pointRadius:6, pointHoverRadius:9, fill:false, borderDash:[5,3] },
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-        plugins:{ legend:{position:'top',labels:{font:{size:11},padding:14}}, tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y}${ctx.datasetIndex===0||ctx.datasetIndex===1?'%':''}`}} },
-        scales:{
-          y:{ type:'linear', position:'left', min:0, max:100, title:{display:true,text:'Score / Rate (%)',font:{size:10}} },
-          y2:{ type:'linear', position:'right', min:0, title:{display:true,text:'Cumulative Open',font:{size:10}}, grid:{drawOnChartArea:false} },
-          x:{ grid:{color:'rgba(0,0,0,.05)'} }
-        },
-        onClick:(evt,els)=>{
-          if(!els.length)return;
-          const e=engs[els[0].index];
-          if(e.linkId){S.currentAsgId=e.linkId;nav('asg-detail');}
-        }
-      }
-    });
-
-    // Auto-flag deteriorating trend
-    if(engs.length>=3){
-      const last3=engs.slice(-3);
-      const worsening=last3.every((e,i)=>i===0||e.riskScore>=last3[i-1].riskScore);
-      if(worsening){
-        const flag=document.createElement('div');
-        flag.style.cssText='margin-top:12px;padding:10px 14px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:11px;font-weight:700;color:#CC2200;display:flex;align-items:center;gap:8px';
-        flag.innerHTML='🚨 <span>Deteriorating trend detected over 3+ years — this client is auto-flagged as <strong>HIGH RISK — SYSTEMIC</strong></span>';
-        document.querySelector('#intel-tab-content')?.appendChild(flag);
-      }
-    }
-  },50);
 }
 
-/* ── Feature 2: Control Weakness Heatmap ───────────────────── */
-function renderIntelHeatmap(container){
-  const ci=S.intel;
-  const hm=INTEL_HEATMAP[ci.clientId]||{};
-  const fys=Object.keys(hm).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=ci.yrFrom&&y<=ci.yrTo;}).sort();
-  const areas=['Access Controls','Vendor Management','Financial Reporting','IT General Controls','Payroll','Procurement','Fixed Assets','AML / Compliance','Governance'];
-  const lvlColor={'none':'#E8E8E8','low':'#BEF0CF','medium':'#FDE68A','high':'#FDBA74','critical':'#FCA5A5'};
-  const lvlText= {'none':'None',     'low':'Low',     'medium':'Medium',  'high':'High',    'critical':'Critical'};
+/* ── Tab: Thematic Summary ──────────────────────────────────────────────── */
+function renderQAThematic(container, asgs, rows){
+  const ci = S.intel;
+  const clientName = (CLIENTS.find(c=>c.id===ci.clientId)||{}).name || 'Client';
+  const themes = qaByTheme(rows);
+  const totalQAs = asgs.length;
 
-  // find chronic areas
-  const chronicAreas=new Set();
-  areas.forEach(area=>{
-    let streak=0;
-    fys.forEach(fy=>{ if(hm[fy]&&hm[fy][area]==='critical'){streak++; if(streak>=3) chronicAreas.add(area);} else streak=0; });
+  if(!themes.length){ container.innerHTML=`<div style="color:var(--t3);font-size:12px;padding:20px">No data.</div>`; return; }
+
+  container.innerHTML = `
+<div style="margin-bottom:16px;padding:14px 18px;background:#FFF8E1;border:1px solid #F59E0B;border-left:4px solid #F59E0B;border-radius:6px;font-size:11px;color:#92400E;line-height:1.6">
+  <strong>How to read this:</strong> Each theme groups QA checkpoints by audit activity area. Exception rate = checkpoints rated Exception ÷ total checkpoints assessed across all ${totalQAs} QA run${totalQAs!==1?'s':''} for ${esc(clientName)} in this period.
+</div>
+${themes.map(t=>{
+  // Find which QA runs contributed exceptions for this theme
+  const themeExcRows = rows.filter(r=>{
+    const cp = CHECKLIST.find(c=>c.no===r.cpNo)||{};
+    return t.theme.match(cp) && r.status==='Exception';
   });
+  // Group by asgId
+  const byAsg = {};
+  themeExcRows.forEach(r=>{
+    if(!byAsg[r.asgId]) byAsg[r.asgId]={ asg: asgs.find(a=>a.id===r.asgId)||{id:r.asgId,name:r.asgId}, cps:[] };
+    if(!byAsg[r.asgId].cps.includes(r.cpNo)) byAsg[r.asgId].cps.push(r.cpNo);
+  });
+  const asgCount = Object.keys(byAsg).length;
+  const barW = t.rate;
+  const barColor = t.rate>=50?'#CC2200':t.rate>=25?'#D97706':'#1A7A4A';
+  const bgColor  = t.rate>=50?'#FEF2F2':t.rate>=25?'#FFF7ED':'#F0FDF4';
+  const bdColor  = t.rate>=50?'#FECACA':t.rate>=25?'#FED7AA':'#BBF7D0';
 
-  container.innerHTML=`
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px;overflow-x:auto">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 2 — Control Weakness Heatmap</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Failure frequency by control area and year. Click any cell to drill into findings. Cells with Critical for 3+ years are auto-flagged as chronic.</div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-    ${Object.entries(lvlColor).map(([k,c])=>`<span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--t2)"><span style="width:14px;height:14px;border-radius:3px;background:${c};border:1px solid rgba(0,0,0,.1);display:inline-block"></span>${lvlText[k]}</span>`).join('')}
-    <span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#CC2200">🔁 Chronic (Critical 3+ yrs)</span>
+  // Representative findings (first 3 exception observations)
+  const sampleFindings = themeExcRows.slice(0,3);
+
+  return `
+<div style="background:${bgColor};border:1px solid ${bdColor};border-left:4px solid ${barColor};border-radius:8px;padding:20px;margin-bottom:14px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">${t.theme.icon}</span>
+      <div>
+        <div style="font-size:14px;font-weight:800;color:var(--t1)">${esc(t.theme.label)}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px">
+          ${t.cpNos.map(n=>`CP${String(n).padStart(2,'0')}`).join(' · ')}
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:28px;font-weight:900;color:${barColor};line-height:1">${t.rate}%</div>
+      <div style="font-size:10px;color:var(--t3)">exception rate</div>
+    </div>
   </div>
-  <table style="border-collapse:collapse;min-width:600px">
-    <thead><tr>
-      <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--t2);background:var(--bg3);border:1px solid var(--border);min-width:160px">Control Area</th>
-      ${fys.map(fy=>`<th style="padding:8px 14px;text-align:center;font-size:11px;font-weight:700;color:var(--t2);background:var(--bg3);border:1px solid var(--border);min-width:90px">${fy}</th>`).join('')}
-    </tr></thead>
-    <tbody>
-    ${areas.map(area=>{
-      const isChronic=chronicAreas.has(area);
-      return `<tr>
-        <td style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--t1);border:1px solid var(--border);background:${isChronic?'rgba(204,34,0,.06)':'var(--bg2)'}">
-          ${isChronic?'🔁 ':''}${area}${isChronic?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;background:#CC2200;color:#fff;border-radius:8px;font-weight:700">CHRONIC</span>':''}
-        </td>
-        ${fys.map(fy=>{
-          const lvl=(hm[fy]&&hm[fy][area])||'none';
-          return `<td onclick="S.intel.drillArea='${area.replace(/'/g,"\\'")}';S.intel.drillYear='${fy}';renderIntelHeatmapDrill()"
-            style="padding:10px;text-align:center;font-size:10px;font-weight:700;border:1px solid var(--border);background:${lvlColor[lvl]};cursor:pointer;transition:opacity .15s"
-            onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'"
-            title="Click to drill into ${area} — ${fy}">
-            ${lvlText[lvl]}
-          </td>`;
+
+  <!-- Progress bar -->
+  <div style="background:var(--border);border-radius:4px;height:7px;margin-bottom:12px">
+    <div style="width:${barW}%;background:${barColor};border-radius:4px;height:7px"></div>
+  </div>
+
+  <!-- Stats row -->
+  <div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="font-size:11px;color:var(--t2)"><strong>${t.exceptions}</strong> exceptions out of <strong>${t.total}</strong> checkpoints assessed</div>
+    <div style="font-size:11px;color:var(--t2)">Found in <strong>${asgCount}</strong> of <strong>${totalQAs}</strong> QA run${totalQAs!==1?'s':''}</div>
+  </div>
+
+  <!-- Thematic insight sentence -->
+  <div style="font-size:12px;font-weight:600;color:${barColor};margin-bottom:10px;line-height:1.5">
+    ${qaThemeInsight(t, asgCount, totalQAs, clientName)}
+  </div>
+
+  <!-- Affected QA runs -->
+  ${asgCount>0?`
+  <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Affected QA Runs</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+    ${Object.values(byAsg).map(x=>`
+    <div style="background:${barColor}18;border:1px solid ${barColor}44;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;color:${barColor}">
+      ${esc(x.asg.name||x.asg.id)}
+      <span style="font-weight:400;color:var(--t3)"> · ${x.cps.length} CP${x.cps.length!==1?'s':''}</span>
+    </div>`).join('')}
+  </div>`:``}
+
+  <!-- Sample findings -->
+  ${sampleFindings.length?`
+  <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Sample QA Observations</div>
+  ${sampleFindings.map(r=>{
+    const cpMeta = CHECKLIST.find(c=>c.no===r.cpNo)||{};
+    const asgName = (asgs.find(a=>a.id===r.asgId)||{}).name||r.asgId;
+    return `<div style="background:#00000008;border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:11px;line-height:1.5;color:var(--t2)">
+      <span style="font-weight:700;color:var(--t1)">CP${String(r.cpNo).padStart(2,'0')} · ${esc(cpMeta.cp||'')}</span>
+      <span style="color:var(--t4);font-size:10px"> — ${esc(asgName)}</span><br>
+      ${esc((r.finding||r.obs||'').slice(0,200))}${(r.finding||r.obs||'').length>200?'…':''}
+    </div>`;
+  }).join('')}`:``}
+</div>`;
+}).join('')}`;
+}
+
+// Generate a plain-English thematic insight sentence
+function qaThemeInsight(t, asgCount, totalQAs, clientName){
+  const pct = t.rate;
+  const sev = pct>=66?'a critical recurring':'a frequent';
+  const themeLabel = t.theme.label;
+  if(pct===0) return `No exceptions found under ${themeLabel} in this period — this area is performing well.`;
+  if(asgCount===totalQAs) return `${themeLabel} had exceptions in all ${totalQAs} QA run${totalQAs!==1?'s':''} reviewed for ${clientName}, with a ${pct}% exception rate — indicating ${sev} systemic gap.`;
+  return `In ${asgCount} of ${totalQAs} QA run${totalQAs!==1?'s':''} for ${clientName}, ${themeLabel} was flagged as an exception area (${pct}% of assessed checkpoints failed) — this is ${sev} quality gap requiring attention.`;
+}
+
+/* ── Tab: CP Heatmap ────────────────────────────────────────────────────── */
+function renderQACpHeatmap(container, asgs, rows){
+  const byCp = qaByCp(rows);
+  if(!byCp.length){ container.innerHTML=`<div style="color:var(--t3);font-size:12px;padding:20px">No data.</div>`; return; }
+
+  // Group by phase
+  const phases = [...new Set(CHECKLIST.map(c=>c.phase))];
+  const cpMap  = {};
+  rows.forEach(r=>{ if(!cpMap[r.cpNo])cpMap[r.cpNo]={tot:0,exc:0}; cpMap[r.cpNo].tot++; if(r.status==='Exception')cpMap[r.cpNo].exc++; });
+
+  function cellColor(exc,tot){
+    if(!tot) return 'var(--bg3)';
+    const r=exc/tot;
+    if(r>=.66) return '#CC2200';
+    if(r>=.4)  return '#DC2626CC';
+    if(r>=.2)  return '#D97706';
+    if(r>0)    return '#F59E0B88';
+    return '#1A7A4A44';
+  }
+  function cellText(exc,tot){
+    if(!tot) return '—';
+    if(exc===0) return '✓';
+    return `${exc}/${tot}`;
+  }
+
+  container.innerHTML = `
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Checkpoint Exception Heatmap</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Each cell = exceptions / total times that CP was assessed. Darker red = higher failure rate.</div>
+  <!-- Legend -->
+  <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;font-size:10px;color:var(--t2)">
+    ${[['✓ Pass','#1A7A4A44'],['1–19%','#F59E0B88'],['20–39%','#D97706'],['40–65%','#DC2626CC'],['66%+','#CC2200']].map(([lbl,clr])=>
+      `<div style="display:flex;align-items:center;gap:5px"><div style="width:14px;height:14px;border-radius:3px;background:${clr}"></div>${lbl}</div>`
+    ).join('')}
+  </div>
+  ${phases.map(phase=>{
+    const cps = CHECKLIST.filter(c=>c.phase===phase);
+    return `
+    <div style="margin-bottom:18px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);margin-bottom:8px">${esc(phase)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${cps.map(c=>{
+          const d = cpMap[c.no]||{tot:0,exc:0};
+          const clr = cellColor(d.exc,d.tot);
+          const txt = cellText(d.exc,d.tot);
+          const fgClr = d.tot&&d.exc/d.tot>=.4?'#fff':'var(--t1)';
+          return `<div title="CP${String(c.no).padStart(2,'0')}: ${c.cp}\n${d.exc} exceptions / ${d.tot} assessed"
+            style="min-width:52px;padding:6px 8px;border-radius:5px;background:${clr};text-align:center;cursor:default">
+            <div style="font-size:9px;font-weight:700;color:${fgClr};opacity:.8">CP${String(c.no).padStart(2,'0')}</div>
+            <div style="font-size:11px;font-weight:800;color:${fgClr}">${txt}</div>
+          </div>`;
         }).join('')}
-      </tr>`;
-    }).join('')}
-    </tbody>
-  </table>
+      </div>
+    </div>`;
+  }).join('')}
 </div>
-<div id="heatmap-drill" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px"></div>`;
-}
 
-function renderIntelHeatmapDrill(){
-  const ci=S.intel;
-  const area=ci.drillArea, fy=ci.drillYear;
-  const yr=parseInt((fy||'').replace('FY',''));
-  const findings=intelFindings(ci.clientId).filter(f=>f.controlArea===area && f.engId && INTEL_ENGAGEMENTS.find(e=>e.id===f.engId&&e.year===yr));
-  const drill=document.getElementById('heatmap-drill');
-  if(!drill)return;
-  drill.style.display='block';
-  drill.innerHTML=`
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:800;color:var(--t1)">Drill-down: ${esc(area)} — ${esc(fy)}</div>
-  <button onclick="document.getElementById('heatmap-drill').style.display='none'" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;font-size:11px">✕ Close</button>
-</div>
-${findings.length===0?`<div style="color:var(--t3);font-size:12px">No specific findings recorded for this cell.</div>`:
-  findings.map(f=>`
-<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;border-left:3px solid ${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">
-  <div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:4px">${esc(f.finding)}</div>
-  <div style="font-size:10px;color:var(--t3)">Dept: <strong>${esc(f.dept)}</strong> · Risk: <strong style="color:${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">${f.riskLevel}</strong> · Status: <strong>${f.status}</strong></div>
-</div>`).join('')}`;
-  drill.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-
-/* ── Feature 3: Recurring Findings Tracker ─────────────────── */
-function renderIntelFindings(container){
-  const ci=S.intel;
-  const findings=intelFindings(ci.clientId);
-  // Build recurrence chains
-  const recMap={};
-  findings.forEach(f=>{
-    const root=f.recurrenceLink||f.id;
-    if(!recMap[root]) recMap[root]=[];
-    recMap[root].push(f);
-  });
-  // Flatten: one row per "base" finding with recurrence count
-  const rows=[];
-  const seen=new Set();
-  findings.forEach(f=>{
-    const root=f.recurrenceLink||f.id;
-    if(seen.has(root))return;
-    seen.add(root);
-    const chain=(recMap[root]||[f]);
-    const count=chain.length;
-    const firstDate=chain.reduce((min,x)=>!min||x.firstRaised<min?x.firstRaised:min,null);
-    const ageYrs=firstDate?((new Date()-new Date(firstDate))/(1000*60*60*24*365)).toFixed(1):null;
-    const allClosed=chain.every(x=>x.status==='Closed');
-    const hasReopened=chain.some(x=>x.status==='Re-opened');
-    rows.push({...f, recurrenceCount:count, firstRaised:firstDate, ageYrs, allClosed, hasReopened, latestStatus:chain[chain.length-1].status});
-  });
-  rows.sort((a,b)=>b.recurrenceCount-a.recurrenceCount||b.ageYrs-a.ageYrs);
-
-  container.innerHTML=`
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;overflow-x:auto">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 3 — Recurring Findings Tracker</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Findings that have re-appeared across engagements, with full recurrence chain and age tracking.</div>
+<!-- Ranked table -->
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:12px">Checkpoint Failure Ranking</div>
   <table style="width:100%;border-collapse:collapse;font-size:11px">
     <thead><tr style="background:var(--bg3)">
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2);min-width:220px">Finding</th>
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Control Area</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">First Raised</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Recurrences</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Open Age (yrs)</th>
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Department</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Status</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Badges</th>
+      <th style="text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">#</th>
+      <th style="text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Checkpoint</th>
+      <th style="text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Phase · Activity</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Assessed</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Exceptions</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Fail %</th>
     </tr></thead>
     <tbody>
-    ${rows.map(f=>{
-      const chronic=f.ageYrs>2&&!f.allClosed;
-      const escalated=f.hasReopened;
-      const statusColor=f.latestStatus==='Closed'?'#1A7A4A':f.latestStatus==='Open'?'#CC2200':f.latestStatus==='Re-opened'?'#CC2200':'#D97706';
-      return `<tr style="border-bottom:1px solid var(--border);${chronic?'background:rgba(204,34,0,.03)':''}">
-        <td style="padding:9px 10px;color:var(--t1);line-height:1.4">${esc(f.finding.length>90?f.finding.slice(0,90)+'…':f.finding)}</td>
-        <td style="padding:9px 10px;color:var(--t2)">${esc(f.controlArea)}</td>
-        <td style="padding:9px 10px;text-align:center;color:var(--t3)">${f.firstRaised||'—'}</td>
-        <td style="padding:9px 10px;text-align:center;font-weight:900;color:${f.recurrenceCount>=3?'#CC2200':f.recurrenceCount>=2?'#D97706':'var(--t2)'}">${f.recurrenceCount}</td>
-        <td style="padding:9px 10px;text-align:center;font-weight:700;color:${f.ageYrs>2?'#CC2200':'var(--t2)'}">${f.allClosed?'Closed':f.ageYrs||'—'}</td>
-        <td style="padding:9px 10px;color:var(--t2)">${esc(f.dept)}</td>
-        <td style="padding:9px 10px;text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${statusColor}22;color:${statusColor}">${f.latestStatus}</span></td>
-        <td style="padding:9px 10px;text-align:center;white-space:nowrap">
-          ${chronic?'<span style="padding:2px 7px;background:#CC2200;color:#fff;border-radius:10px;font-size:9px;font-weight:800;margin-right:3px">CHRONIC</span>':''}
-          ${escalated?'<span style="padding:2px 7px;background:#D97706;color:#fff;border-radius:10px;font-size:9px;font-weight:800">ESCALATED</span>':''}
-          ${!chronic&&!escalated?'<span style="color:var(--t4);font-size:10px">—</span>':''}
+    ${byCp.map((c,i)=>{
+      const rc = c.rate>=50?'#CC2200':c.rate>=25?'#D97706':'#1A7A4A';
+      return `<tr style="background:${i%2===0?'var(--bg2)':'var(--bg3)'}">
+        <td style="padding:7px 10px;color:var(--t3)">${i+1}</td>
+        <td style="padding:7px 10px;color:var(--t1);font-weight:600">CP${String(c.cpNo).padStart(2,'0')} · ${esc(c.label)}</td>
+        <td style="padding:7px 10px;color:var(--t3);font-size:10px">${esc(c.phase)} · ${esc(c.act)}</td>
+        <td style="text-align:center;padding:7px 10px;color:var(--t2)">${c.total}</td>
+        <td style="text-align:center;padding:7px 10px;font-weight:700;color:${rc}">${c.exceptions}</td>
+        <td style="text-align:center;padding:7px 10px">
+          <span style="background:${rc}22;color:${rc};font-weight:700;font-size:10px;padding:2px 8px;border-radius:10px">${c.rate}%</span>
         </td>
       </tr>`;
     }).join('')}
@@ -9606,468 +9710,181 @@ function renderIntelFindings(container){
 </div>`;
 }
 
-/* ── Feature 4: Department Negligence Scorecard ─────────────── */
-function renderIntelDepts(container){
-  const ci=S.intel;
-  const findings=intelFindings(ci.clientId);
-  const depts={};
-  findings.forEach(f=>{
-    if(!depts[f.dept]) depts[f.dept]={raised:0,closed:0,open:0,ages:[],openFindings:[]};
-    depts[f.dept].raised++;
-    if(f.status==='Closed'){ depts[f.dept].closed++; }
-    else { depts[f.dept].open++; depts[f.dept].openFindings.push(f); if(f.firstRaised){const a=(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365);depts[f.dept].ages.push(a);} }
-  });
-  const rows=Object.entries(depts).map(([dept,d])=>{
-    const rate=d.raised?Math.round(d.closed/d.raised*100):100;
-    const avgAge=d.ages.length?+(d.ages.reduce((s,a)=>s+a,0)/d.ages.length).toFixed(1):0;
-    return {dept,rate,avgAge,...d};
-  }).sort((a,b)=>a.rate-b.rate);
+/* ── Tab: Trend by QA Run ───────────────────────────────────────────────── */
+function renderQATrend(container, asgs, rows){
+  if(!asgs.length){ container.innerHTML=`<div style="color:var(--t3);font-size:12px;padding:20px">No data.</div>`; return; }
 
-  container.innerHTML=`
+  const asgData = asgs.map(a=>{
+    const fr = FINDINGS[a.id]||[];
+    const exc = fr.filter(r=>r.status==='Exception').length;
+    const pass= fr.filter(r=>r.status==='Pass').length;
+    const mr  = fr.filter(r=>r.status==='Manual Review').length;
+    const tot = fr.length;
+    const rate= tot?Math.round(exc/tot*100):0;
+    return { a, exc, pass, mr, tot, rate };
+  }).filter(x=>x.tot>0);
+
+  if(!asgData.length){ container.innerHTML=`<div style="color:var(--t3);font-size:12px;padding:20px">No findings data found.</div>`; return; }
+
+  container.innerHTML = `
 <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 4 — Department Negligence Scorecard</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Remediation performance by department. Departments below 40% are flagged as negligent. Click any bar or row to see their open findings.</div>
-  <div style="position:relative;height:240px;margin-bottom:20px"><canvas id="chart-depts"></canvas></div>
+  <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Exception Rate Trend Across QA Runs</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:20px">Each bar represents one QA run. Higher bar = more checkpoints rated Exception.</div>
+
+  <!-- Bar chart -->
+  <div style="display:flex;align-items:flex-end;gap:8px;height:160px;padding:0 4px;border-left:1px solid var(--border);border-bottom:1px solid var(--border)">
+    ${asgData.map(x=>{
+      const h = Math.max(x.rate, 2);
+      const clr = x.rate>=50?'#CC2200':x.rate>=25?'#D97706':'#1A7A4A';
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0">
+        <div style="font-size:9px;font-weight:700;color:${clr};margin-bottom:3px">${x.rate}%</div>
+        <div style="width:100%;background:${clr};border-radius:3px 3px 0 0" style="height:${h}%" title="${x.a.name}: ${x.rate}% exception rate"></div>
+        <div style="font-size:8px;color:var(--t3);margin-top:5px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px" title="${x.a.name}">${esc(x.a.name.split(' ').slice(0,2).join(' '))}</div>
+      </div>`;
+    }).join('')}
+  </div>
 </div>
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;overflow-x:auto">
+
+<!-- Detailed breakdown table -->
+<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
+  <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:12px">QA Run Breakdown</div>
   <table style="width:100%;border-collapse:collapse;font-size:11px">
     <thead><tr style="background:var(--bg3)">
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Department</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Total Raised</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Closed</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Still Open</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Avg Age (yrs)</th>
-      <th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--t2)">Rem. Rate</th>
-      <th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--t2)">Flag</th>
+      <th style="text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Engagement</th>
+      <th style="text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Period</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Total CPs</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">✓ Pass</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">✕ Exception</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">? Manual</th>
+      <th style="text-align:center;padding:7px 10px;border-bottom:1px solid var(--border);color:var(--t3)">Exc. Rate</th>
     </tr></thead>
     <tbody>
-    ${rows.map(r=>{
-      const negligent=r.rate<40;
-      const rc=r.rate>=70?'#1A7A4A':r.rate>=40?'#D97706':'#CC2200';
-      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;${negligent?'background:rgba(204,34,0,.03)':''}"
-        onclick="renderIntelDeptDrill('${r.dept}')">
-        <td style="padding:9px 10px;font-weight:700;color:var(--t1)">${esc(r.dept)}</td>
-        <td style="padding:9px 10px;text-align:center">${r.raised}</td>
-        <td style="padding:9px 10px;text-align:center;color:#1A7A4A;font-weight:700">${r.closed}</td>
-        <td style="padding:9px 10px;text-align:center;color:${r.open>0?'#CC2200':'var(--t3)'};font-weight:700">${r.open}</td>
-        <td style="padding:9px 10px;text-align:center;color:${r.avgAge>2?'#CC2200':'var(--t3)'}">${r.avgAge||'—'}</td>
-        <td style="padding:9px 10px;text-align:center;font-weight:900;color:${rc}">${r.rate}%</td>
-        <td style="padding:9px 10px">${negligent?'<span style="padding:2px 8px;background:#CC2200;color:#fff;border-radius:10px;font-size:9px;font-weight:800">NEGLIGENT — mgmt attn required</span>':'<span style="color:#1A7A4A;font-size:10px;font-weight:700">✓ Acceptable</span>'}</td>
+    ${asgData.map((x,i)=>{
+      const rc = x.rate>=50?'#CC2200':x.rate>=25?'#D97706':'#1A7A4A';
+      return `<tr style="background:${i%2===0?'var(--bg2)':'var(--bg3)'}">
+        <td style="padding:7px 10px;color:var(--t1);font-weight:600">${esc(x.a.name)}</td>
+        <td style="padding:7px 10px;color:var(--t3)">${esc(x.a.period||'')}</td>
+        <td style="text-align:center;padding:7px 10px;color:var(--t2)">${x.tot}</td>
+        <td style="text-align:center;padding:7px 10px;font-weight:600;color:#1A7A4A">${x.pass}</td>
+        <td style="text-align:center;padding:7px 10px;font-weight:700;color:#CC2200">${x.exc}</td>
+        <td style="text-align:center;padding:7px 10px;color:#D97706">${x.mr}</td>
+        <td style="text-align:center;padding:7px 10px">
+          <span style="background:${rc}22;color:${rc};font-weight:700;font-size:10px;padding:2px 8px;border-radius:10px">${x.rate}%</span>
+        </td>
       </tr>`;
     }).join('')}
     </tbody>
   </table>
-</div>
-<div id="dept-drill" style="display:none;margin-top:16px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px"></div>`;
-
-  setTimeout(()=>{
-    const ctx=document.getElementById('chart-depts');
-    if(!ctx||!window.Chart)return;
-    new Chart(ctx,{
-      type:'bar',
-      data:{
-        labels:rows.map(r=>r.dept),
-        datasets:[
-          { label:'Remediation Rate %', data:rows.map(r=>r.rate), backgroundColor:rows.map(r=>r.rate<40?'rgba(204,34,0,.7)':r.rate<70?'rgba(217,119,6,.7)':'rgba(26,122,74,.7)'), borderRadius:4 }
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, annotation:{} },
-        scales:{
-          y:{min:0,max:100,title:{display:true,text:'Remediation Rate (%)'},ticks:{callback:v=>v+'%'}},
-          x:{ticks:{font:{size:10}}}
-        },
-        onClick:(evt,els)=>{ if(els.length) renderIntelDeptDrill(rows[els[0].index].dept); }
-      },
-      plugins:[{
-        id:'threshold',
-        afterDraw(chart){
-          const {ctx,chartArea:{left,right},scales:{y}}=chart;
-          const y40=y.getPixelForValue(40);
-          ctx.save();ctx.beginPath();ctx.moveTo(left,y40);ctx.lineTo(right,y40);
-          ctx.strokeStyle='#CC2200';ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();
-          ctx.font='bold 10px sans-serif';ctx.fillStyle='#CC2200';ctx.fillText('40% threshold',left+4,y40-5);
-          ctx.restore();
-        }
-      }]
-    });
-  },50);
-}
-function renderIntelDeptDrill(dept){
-  const ci=S.intel;
-  const findings=intelFindings(ci.clientId).filter(f=>f.dept===dept&&f.status!=='Closed');
-  const drill=document.getElementById('dept-drill');
-  if(!drill)return;
-  drill.style.display='block';
-  drill.innerHTML=`
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <div style="font-size:12px;font-weight:800;color:var(--t1)">Open findings — ${esc(dept)}</div>
-  <button onclick="document.getElementById('dept-drill').style.display='none'" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer;font-size:11px">✕ Close</button>
-</div>
-${findings.length===0?`<div style="color:#1A7A4A;font-size:12px;font-weight:700">✓ No open findings for this department.</div>`:
-  findings.map(f=>`
-<div style="border:1px solid var(--border);border-radius:6px;padding:11px 14px;margin-bottom:8px;border-left:3px solid ${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">
-  <div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:3px">${esc(f.finding)}</div>
-  <div style="font-size:10px;color:var(--t3)">Area: <strong>${esc(f.controlArea)}</strong> · Risk: <strong style="color:${f.riskLevel==='Critical'?'#CC2200':f.riskLevel==='High'?'#D97706':'#1A7A4A'}">${f.riskLevel}</strong> · First raised: <strong>${f.firstRaised||'—'}</strong></div>
-</div>`).join('')}`;
-  drill.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-
-/* ── Feature 5: Root Cause Pattern Analysis ─────────────────── */
-function renderIntelRootCause(container){
-  const ci=S.intel;
-  const findings=intelFindings(ci.clientId);
-  const engsByYear={};
-  intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo).forEach(e=>engsByYear[e.year]=e.id);
-  const cats=['People','Process','Technology','Governance'];
-  const catColors={'People':'rgba(26,86,160,.7)','Process':'rgba(217,119,6,.7)','Technology':'rgba(124,58,237,.7)','Governance':'rgba(204,34,0,.7)'};
-  // overall distribution
-  const overall={'People':0,'Process':0,'Technology':0,'Governance':0};
-  findings.forEach(f=>{ if(overall[f.rootCause]!==undefined) overall[f.rootCause]++; });
-  // by year
-  const byYear={};
-  Object.entries(engsByYear).forEach(([yr,eid])=>{
-    byYear[yr]={'People':0,'Process':0,'Technology':0,'Governance':0};
-    findings.filter(f=>f.engId===eid).forEach(f=>{ if(byYear[yr][f.rootCause]!==undefined) byYear[yr][f.rootCause]++; });
-  });
-  const years=Object.keys(byYear).sort();
-  // flag dominant >60%
-  const total=Object.values(overall).reduce((s,v)=>s+v,0);
-  const dominant=total>0?cats.find(c=>overall[c]/total>0.6):null;
-
-  container.innerHTML=`
-<div style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px;margin-bottom:16px">
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Root Cause Distribution</div>
-    <div style="font-size:10px;color:var(--t3);margin-bottom:14px">All findings across selected years</div>
-    <div style="position:relative;height:220px"><canvas id="chart-rc-donut"></canvas></div>
-    ${dominant?`<div style="margin-top:12px;padding:8px 12px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:10px;font-weight:700;color:#CC2200">⚠ ${dominant} drives ${Math.round(overall[dominant]/total*100)}% of findings — systemic issue, not isolated incidents</div>`:''}
-  </div>
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-    <div style="font-size:12px;font-weight:800;color:var(--t1);margin-bottom:4px">Root Cause Mix by Year</div>
-    <div style="font-size:10px;color:var(--t3);margin-bottom:14px">Stacked bar — trends visible across financial years</div>
-    <div style="position:relative;height:220px"><canvas id="chart-rc-stacked"></canvas></div>
-  </div>
-</div>`;
-
-  setTimeout(()=>{
-    const d=document.getElementById('chart-rc-donut');
-    if(d&&window.Chart){
-      new Chart(d,{type:'doughnut',data:{labels:cats,datasets:[{data:cats.map(c=>overall[c]),backgroundColor:cats.map(c=>catColors[c]),borderWidth:2,borderColor:'#fff'}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:10}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} findings (${total?Math.round(ctx.parsed/total*100):0}%)`}}}}});
-    }
-    const s=document.getElementById('chart-rc-stacked');
-    if(s&&window.Chart){
-      new Chart(s,{type:'bar',data:{labels:years.map(y=>'FY'+y),datasets:cats.map(c=>({label:c,data:years.map(y=>byYear[y]?.[c]||0),backgroundColor:catColors[c],borderRadius:2}))},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10},padding:8}}},scales:{x:{stacked:true},y:{stacked:true,title:{display:true,text:'Finding count'},ticks:{stepSize:1}}}}});
-    }
-  },50);
-}
-
-/* ── Feature 6: Remediation Velocity Tracking ───────────────── */
-function renderIntelVelocity(container){
-  const ci=S.intel;
-  const vel=INTEL_VELOCITY[ci.clientId]||{};
-  const fys=Object.keys(vel).filter(fy=>{const y=parseInt(fy.replace('FY',''));return y>=ci.yrFrom&&y<=ci.yrTo;}).sort();
-  const vals=fys.map(fy=>vel[fy]);
-  const target=90;
-  // detect worsening 3+ consecutive years
-  let worseStreak=0, maxWorseStreak=0, prevVal=null;
-  fys.forEach((fy,i)=>{
-    const v=vals[i];
-    if(v!==null&&prevVal!==null){ if(v>prevVal){worseStreak++;maxWorseStreak=Math.max(maxWorseStreak,worseStreak);}else worseStreak=0; }
-    if(v!==null) prevVal=v;
-  });
-
-  container.innerHTML=`
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 6 — Remediation Velocity Tracking</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Average days from finding raised to finding closed, per year. Target: ${target} days. Upward trend = management becoming less responsive.</div>
-  ${maxWorseStreak>=3?`<div style="margin-bottom:12px;padding:8px 12px;background:rgba(204,34,0,.08);border:1px solid rgba(204,34,0,.3);border-radius:6px;font-size:11px;font-weight:700;color:#CC2200">🚨 Velocity has worsened for ${maxWorseStreak}+ consecutive years — management responsiveness is deteriorating</div>`:''}
-  <div style="position:relative;height:260px"><canvas id="chart-velocity"></canvas></div>
-  <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap">
-    ${fys.map((fy,i)=>{
-      const v=vals[i];
-      if(v===null)return `<div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;min-width:90px;text-align:center"><div style="font-size:10px;color:var(--t3)">${fy}</div><div style="font-size:18px;font-weight:800;color:var(--t4)">N/A</div><div style="font-size:9px;color:var(--t4)">In progress</div></div>`;
-      const c=v>target*1.5?'#CC2200':v>target?'#D97706':'#1A7A4A';
-      return `<div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;min-width:90px;text-align:center;border-top:3px solid ${c}"><div style="font-size:10px;color:var(--t3)">${fy}</div><div style="font-size:20px;font-weight:900;color:${c}">${v}</div><div style="font-size:9px;color:var(--t4)">days avg</div></div>`;
-    }).join('')}
-  </div>
-</div>`;
-
-  setTimeout(()=>{
-    const ctx=document.getElementById('chart-velocity');
-    if(!ctx||!window.Chart)return;
-    new Chart(ctx,{
-      type:'bar',
-      data:{labels:fys,datasets:[{label:'Avg days to close',data:vals,backgroundColor:vals.map(v=>v===null?'transparent':v>target*1.5?'rgba(204,34,0,.7)':v>target?'rgba(217,119,6,.7)':'rgba(26,122,74,.7)'),borderRadius:5}]},
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{y:{min:0,title:{display:true,text:'Days to close'}}},
-      },
-      plugins:[{
-        id:'targetLine',
-        afterDraw(chart){
-          const {ctx:c,chartArea:{left,right},scales:{y}}=chart;
-          const yPos=y.getPixelForValue(target);
-          c.save();c.beginPath();c.moveTo(left,yPos);c.lineTo(right,yPos);
-          c.strokeStyle='#1A7A4A';c.lineWidth=2;c.setLineDash([6,4]);c.stroke();
-          c.font='bold 10px sans-serif';c.fillStyle='#1A7A4A';c.fillText('90-day target',left+4,yPos-5);
-          c.restore();
-        }
-      }]
-    });
-  },50);
-}
-
-/* ── Feature 7: Systemic Risk Flag Panel ────────────────────── */
-function renderIntelFlags(container){
-  const ci=S.intel;
-  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
-  const findings=intelFindings(ci.clientId);
-  const flags=[];
-
-  // (a) same finding recurring 3+ times
-  const recMap={};
-  findings.forEach(f=>{const root=f.recurrenceLink||f.id;if(!recMap[root])recMap[root]=[];recMap[root].push(f);});
-  Object.entries(recMap).forEach(([root,chain])=>{
-    if(chain.length>=3){
-      flags.push({
-        type:'RECURRING_FINDING', severity:'Critical',
-        pattern:`Finding "${chain[0].finding.slice(0,70)}…" has recurred ${chain.length} times`,
-        evidence:`First raised ${chain[0].firstRaised} · Control area: ${chain[0].controlArea} · Dept: ${chain[0].dept}`,
-        action:'Generate management letter addressing persistent control failure'
-      });
-    }
-  });
-
-  // (b) dept remediation rate below 40% for 2+ years
-  const deptByYear={};
-  findings.forEach(f=>{
-    const eng=INTEL_ENGAGEMENTS.find(e=>e.id===f.engId);
-    if(!eng)return;
-    const key=`${f.dept}:${eng.year}`;
-    if(!deptByYear[key])deptByYear[key]={raised:0,closed:0};
-    deptByYear[key].raised++;
-    if(f.status==='Closed')deptByYear[key].closed++;
-  });
-  const deptYearRates={};
-  Object.entries(deptByYear).forEach(([k,v])=>{
-    const [dept,yr]=k.split(':');
-    if(!deptYearRates[dept])deptYearRates[dept]=[];
-    const rate=v.raised?Math.round(v.closed/v.raised*100):100;
-    deptYearRates[dept].push({yr,rate});
-  });
-  Object.entries(deptYearRates).forEach(([dept,yrRates])=>{
-    const lowYears=yrRates.filter(r=>r.rate<40);
-    if(lowYears.length>=2){
-      flags.push({
-        type:'DEPT_NEGLIGENCE', severity:'High',
-        pattern:`${dept} has maintained below 40% remediation rate for ${lowYears.length} years`,
-        evidence:`Years: ${lowYears.map(r=>r.yr).join(', ')} · Rates: ${lowYears.map(r=>r.rate+'%').join(', ')}`,
-        action:'Management attention required — escalate to department head and CFO'
-      });
-    }
-  });
-
-  // (c) root cause clustering >60%
-  const rcTotals={'People':0,'Process':0,'Technology':0,'Governance':0};
-  findings.forEach(f=>{if(rcTotals[f.rootCause]!==undefined)rcTotals[f.rootCause]++;});
-  const totalF=Object.values(rcTotals).reduce((s,v)=>s+v,0);
-  Object.entries(rcTotals).forEach(([cat,cnt])=>{
-    if(totalF>0&&cnt/totalF>0.6){
-      flags.push({
-        type:'ROOT_CAUSE_CLUSTER', severity:'Critical',
-        pattern:`${cat} accounts for ${Math.round(cnt/totalF*100)}% of all findings — systemic, not isolated`,
-        evidence:`${cnt} of ${totalF} total findings trace to ${cat} root cause`,
-        action:'Structural intervention required — not a controls refresh but an organisational change'
-      });
-    }
-  });
-
-  // (d) velocity worsening 3+ years
-  const vel=INTEL_VELOCITY[ci.clientId]||{};
-  const velVals=Object.keys(vel).sort().map(fy=>vel[fy]).filter(v=>v!==null);
-  let wStreak=0;
-  velVals.forEach((v,i)=>{if(i>0&&v>velVals[i-1])wStreak++;else if(i>0)wStreak=0;});
-  if(wStreak>=3){
-    flags.push({
-      type:'VELOCITY_DECLINE', severity:'High',
-      pattern:`Remediation velocity has worsened for ${wStreak}+ consecutive years`,
-      evidence:`Average closure time increasing year-on-year — management responsiveness declining`,
-      action:'Initiate remediation SLA enforcement. Consider formal audit committee reporting.'
-    });
-  }
-
-  // (e) chronic heatmap cells
-  const chronicCtrl=intelChronicControls(ci.clientId,ci.yrFrom,ci.yrTo);
-  if(chronicCtrl>0){
-    flags.push({
-      type:'CHRONIC_CONTROL', severity:'Critical',
-      pattern:`${chronicCtrl} control area(s) rated Critical for 3+ consecutive years`,
-      evidence:`See Control Heatmap tab for specific areas`,
-      action:'Immediate escalation to Risk Committee. Potential regulatory disclosure required.'
-    });
-  }
-
-  const sevColor={Critical:'#CC2200',High:'#D97706',Medium:'#D97706'};
-
-  container.innerHTML=`
-<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 7 — Systemic Risk Flag Panel</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Auto-generated flags based on data patterns. Each flag includes the pattern, evidence, and a recommended action.</div>
-  ${flags.length===0?
-    `<div style="padding:24px;text-align:center;color:#1A7A4A;font-weight:700;font-size:13px">✓ No systemic risk flags triggered for this client and date range.</div>`:
-    flags.map(f=>`
-<div style="border:1px solid ${sevColor[f.severity]}44;border-left:4px solid ${sevColor[f.severity]};border-radius:8px;padding:16px;margin-bottom:12px;background:${sevColor[f.severity]}08">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="padding:2px 8px;background:${sevColor[f.severity]};color:#fff;border-radius:10px;font-size:10px;font-weight:800">${f.severity}</span>
-    <span style="font-size:12px;font-weight:800;color:${sevColor[f.severity]}">${f.pattern}</span>
-  </div>
-  <div style="font-size:11px;color:var(--t2);margin-bottom:6px"><strong>Evidence:</strong> ${esc(f.evidence)}</div>
-  <div style="font-size:11px;color:var(--t2);display:flex;align-items:flex-start;gap:8px">
-    <strong style="white-space:nowrap">Action:</strong> ${esc(f.action)}
-    <button onclick="S.intel.tab='narrative';renderIntelligenceTab()" style="margin-left:auto;padding:4px 10px;background:#FFE600;border:none;border-radius:4px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap">Generate letter →</button>
-  </div>
-</div>`).join('')}
 </div>`;
 }
 
-/* ── Feature 8: AI-Generated Risk Narrative ─────────────────── */
-function renderIntelNarrative(container){
-  const ci=S.intel;
+/* ── Tab: AI Narrative ──────────────────────────────────────────────────── */
+function renderQANarrative(container, asgs, rows){
+  const ci = S.intel;
   container.innerHTML=`
 <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px">
-  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">Feature 8 — AI-Generated Risk Narrative</div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Sends all client intelligence data to Claude and generates a structured risk narrative covering health trajectory, systemic weaknesses, negligent departments, root cause patterns, and escalation recommendations.</div>
-  <button id="btn-generate-narrative" onclick="generateIntelNarrative()" style="padding:10px 20px;background:#FFE600;border:none;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:16px">
-    ✦ Generate Risk Narrative
+  <div style="font-size:13px;font-weight:800;color:var(--t1);margin-bottom:4px">AI QA Intelligence Narrative</div>
+  <div style="font-size:11px;color:var(--t3);margin-bottom:16px">Sends QA findings data to Claude and generates a structured quality narrative covering recurring themes, highest-risk checkpoints, audit team coaching points, and recommended remediation actions.</div>
+  <button id="btn-generate-narrative" onclick="generateQANarrative()" style="padding:10px 20px;background:#FFE600;border:none;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:16px">
+    ✦ Generate QA Narrative
   </button>
   <div id="intel-narrative-out" style="display:none"></div>
 </div>`;
 }
 
-async function generateIntelNarrative(){
-  const ci=S.intel;
-  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Unknown Client'};
-  const engs=intelEngagements(ci.clientId,ci.yrFrom,ci.yrTo);
-  const findings=intelFindings(ci.clientId);
-  const btn=document.getElementById('btn-generate-narrative');
-  const out=document.getElementById('intel-narrative-out');
+async function generateQANarrative(){
+  const ci = S.intel;
+  const selClient = CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
+  const asgs  = qaIntelAsgs(ci.clientId, ci.yrFrom, ci.yrTo);
+  const rows  = qaIntelFindings(asgs.map(a=>a.id));
+  const themes = qaByTheme(rows);
+  const byCp   = qaByCp(rows).slice(0,10);
+
+  const btn = document.getElementById('btn-generate-narrative');
+  const out  = document.getElementById('intel-narrative-out');
   if(btn) btn.disabled=true, btn.textContent='Generating…';
-  if(out) out.style.display='block', out.innerHTML='<div style="color:var(--t3);font-size:12px;padding:12px 0">Analysing client data and generating narrative…</div>';
+  if(out) out.style.display='block', out.innerHTML='<div style="color:var(--t3);font-size:12px;padding:12px 0">Analysing QA data and generating narrative…</div>';
 
-  const depts={};
-  findings.forEach(f=>{
-    if(!depts[f.dept])depts[f.dept]={raised:0,closed:0};
-    depts[f.dept].raised++;
-    if(f.status==='Closed')depts[f.dept].closed++;
-  });
-  const deptSummary=Object.entries(depts).map(([d,v])=>`${d}: ${v.raised} raised, ${v.closed} closed (${Math.round(v.closed/v.raised*100)}% remediation rate)`).join('; ');
+  const asgSummary = asgs.map(a=>{
+    const fr = FINDINGS[a.id]||[];
+    const exc = fr.filter(r=>r.status==='Exception').length;
+    const tot = fr.length;
+    return `${a.name} (${a.period||''}): ${exc} exceptions / ${tot} CPs assessed (${tot?Math.round(exc/tot*100):0}% exception rate)`;
+  }).join('\n');
 
-  const rcTotals={'People':0,'Process':0,'Technology':0,'Governance':0};
-  findings.forEach(f=>{if(rcTotals[f.rootCause]!==undefined)rcTotals[f.rootCause]++;});
+  const themeSummary = themes.map(t=>
+    `${t.theme.label}: ${t.exceptions} exceptions / ${t.total} assessed = ${t.rate}% failure rate. Failing CPs: ${t.cpNos.map(n=>'CP'+String(n).padStart(2,'0')).join(', ')}`
+  ).join('\n');
 
-  const recurrings=findings.filter(f=>f.recurrenceLink);
-  const chronics=findings.filter(f=>!f.recurrenceLink&&f.firstRaised&&(new Date()-new Date(f.firstRaised))/(1000*60*60*24*365)>2&&f.status!=='Closed');
+  const cpSummary = byCp.map(c=>
+    `CP${String(c.cpNo).padStart(2,'0')} (${c.label}): ${c.exceptions}/${c.total} = ${c.rate}% failure rate`
+  ).join('\n');
 
-  const prompt=`You are a senior internal audit quality assurance partner. Write a structured risk narrative for the following client intelligence data. Use a professional tone suitable for a Board-level management letter.
+  const prompt = `You are a senior internal audit QA partner reviewing quality assurance findings across multiple audit engagements for a client. Write a structured QA intelligence narrative based on the following data. Use professional language appropriate for a QA partner's management memo.
 
-CLIENT: ${selClient.name} | Industry: ${selClient.industry||'N/A'} | Period: FY${ci.yrFrom}–FY${ci.yrTo}
+CLIENT: ${selClient.name} | Period: FY${ci.yrFrom}–FY${ci.yrTo}
+TOTAL QA RUNS: ${asgs.length}
+TOTAL CHECKPOINTS ASSESSED: ${rows.length}
+OVERALL EXCEPTION RATE: ${qaExceptionRate(rows)}%
 
-ENGAGEMENT HISTORY:
-${engs.map(e=>`${e.fy}: ${e.area} — Risk score ${e.riskScore}/100, Remediation rate ${e.remediationRate}%, Open findings ${e.openFindings}`).join('\n')}
+QA RUN SUMMARY:
+${asgSummary}
 
-DEPARTMENT PERFORMANCE:
-${deptSummary}
+THEMATIC BREAKDOWN (by QA checkpoint category):
+${themeSummary}
 
-ROOT CAUSE DISTRIBUTION:
-${Object.entries(rcTotals).map(([k,v])=>`${k}: ${v} findings`).join(', ')}
-
-RECURRING FINDINGS (${recurrings.length}):
-${recurrings.slice(0,5).map(f=>`- ${f.finding.slice(0,120)} [Area: ${f.controlArea}, Dept: ${f.dept}, Root cause: ${f.rootCause}]`).join('\n')}
-
-CHRONIC OPEN FINDINGS (open >2 years, ${chronics.length}):
-${chronics.slice(0,5).map(f=>`- ${f.finding.slice(0,120)} [Raised: ${f.firstRaised}, Dept: ${f.dept}]`).join('\n')}
+TOP FAILING CHECKPOINTS:
+${cpSummary}
 
 Write a structured narrative with these sections:
-1. Overall Client Health Trajectory (3-4 sentences summarising trend)
-2. Top 3 Systemic Control Weaknesses (with evidence and impact)
-3. Department Negligence Assessment (name specific departments with data)
-4. Root Cause Pattern Analysis (what the distribution indicates about governance)
-5. Recommended Escalation Actions and Management Letter Points (bullet list)
+1. Overall QA Quality Summary (2-3 sentences on the overall QA health for this client)
+2. Top 3 Recurring QA Themes (specific themes with data — e.g. "In X of Y QA runs, RCM documentation was flagged as an exception. The primary gap was...")
+3. Most Problematic Checkpoints (name specific checkpoints with failure patterns)
+4. Coaching Recommendations for the Audit Team (practical, specific actions to improve quality)
+5. Priority Actions Before Next QA Review (bulleted list of top 3-5 things to fix)
 
-Keep each section concise but substantive. Use professional audit language.`;
+Be specific, data-driven, and reference actual checkpoint numbers and themes from the data. Keep each section concise.`;
 
-  try {
-    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
+  try{
+    const res = await apiFetch('https://api.anthropic.com/v1/messages',{
       model:'claude-opus-4-8',
       max_tokens:1500,
       thinking:{type:'adaptive'},
       messages:[{role:'user',content:prompt}]
     });
-    const data=await res.json();
-    const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n\n').trim()||'No narrative generated.';
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n\n').trim()||'No narrative generated.';
     if(out){
+      out._narrativeText = text;
       out.innerHTML=`
 <div style="border:1px solid var(--border);border-radius:6px;padding:20px;font-size:12px;line-height:1.7;color:var(--t1);white-space:pre-wrap;font-family:inherit;margin-bottom:14px">${esc(text)}</div>
 <div style="display:flex;gap:10px">
   <button onclick="intelNarrativeExportWord()" style="padding:8px 16px;background:#1A3A5C;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">⇩ Export Word</button>
-  <button onclick="intelNarrativeExportPDF()" style="padding:8px 16px;background:#CC2200;color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">⇩ Export PDF</button>
+  <button onclick="renderQANarrative(document.getElementById('intel-tab-content'),null,null);setTimeout(()=>{document.getElementById('btn-generate-narrative').disabled=false;document.getElementById('btn-generate-narrative').textContent='✦ Generate QA Narrative';},50)" style="padding:8px 16px;background:var(--bg3);color:var(--t2);border:1px solid var(--border);border-radius:5px;font-size:12px;font-weight:700;cursor:pointer">↺ Regenerate</button>
 </div>`;
-      out._narrativeText=text;
     }
-  } catch(e){
-    if(out) out.innerHTML=`<div style="color:#CC2200;font-size:12px;padding:8px">Error: ${esc(e.message)} — check your API key in ⚙ API Key settings.</div>`;
-  } finally {
-    if(btn) btn.disabled=false, btn.textContent='✦ Generate Risk Narrative';
+  }catch(e){
+    if(out) out.innerHTML=`<div style="color:#CC2200;font-size:12px">Error generating narrative: ${esc(String(e))}</div>`;
   }
+  if(btn) btn.disabled=false, btn.textContent='✦ Generate QA Narrative';
 }
 
 function intelNarrativeExportWord(){
-  const ci=S.intel;
-  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
-  const out=document.getElementById('intel-narrative-out');
-  const text=out?._narrativeText||'No narrative generated.';
+  const ci = S.intel;
+  const selClient = CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
+  const out = document.getElementById('intel-narrative-out');
+  const text = out?._narrativeText||'No narrative generated.';
   const html=`<html><body style="font-family:Calibri,sans-serif;font-size:11pt;margin:48pt 60pt">
-<h1 style="font-size:16pt;color:#1A3A5C;margin-bottom:6pt">360° Risk Intelligence Narrative</h1>
+<h1 style="font-size:16pt;color:#1A3A5C;margin-bottom:6pt">QA Intelligence Narrative</h1>
 <h2 style="font-size:13pt;color:#1A3A5C;margin-bottom:4pt">${esc(selClient.name)} — FY${ci.yrFrom} to FY${ci.yrTo}</h2>
 <p style="color:#666;font-size:9pt;margin-bottom:24pt">Generated: ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</p>
 <div style="white-space:pre-wrap;line-height:1.6">${esc(text)}</div>
 </body></html>`;
   const blob=new Blob([html],{type:'application/msword'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`Risk_Narrative_${selClient.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
-  a.click();showToast('✓ Word narrative downloaded','green');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`QA_Narrative_${selClient.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
+  a.click(); showToast('✓ Word narrative downloaded','green');
 }
-
-function intelNarrativeExportPDF(){
-  if(!window.jspdf){showToast('PDF library not loaded','red');return;}
-  const ci=S.intel;
-  const selClient=CLIENTS.find(c=>c.id===ci.clientId)||{name:'Client'};
-  const out=document.getElementById('intel-narrative-out');
-  const text=out?._narrativeText||'No narrative generated.';
-  const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  const margin=18, pageW=210, usableW=pageW-margin*2;
-  let y=margin;
-  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(26,58,92);
-  doc.text('360° Risk Intelligence Narrative',margin,y);y+=9;
-  doc.setFontSize(12);doc.text(selClient.name+' — FY'+ci.yrFrom+' to FY'+ci.yrTo,margin,y);y+=7;
-  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(120,120,120);
-  doc.text('Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}),margin,y);y+=10;
-  doc.setDrawColor(26,58,92);doc.setLineWidth(.5);doc.line(margin,y,pageW-margin,y);y+=8;
-  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(30,30,30);
-  const lines=doc.splitTextToSize(text,usableW);
-  lines.forEach(ln=>{
-    if(y>285){doc.addPage();y=margin;}
-    doc.text(ln,margin,y);y+=5;
-  });
-  doc.save(`Risk_Narrative_${selClient.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
-  showToast('✓ PDF narrative downloaded','green');
-}
-</script>
+</script></script>
 
 </body></html>
