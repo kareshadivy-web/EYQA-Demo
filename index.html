@@ -9617,11 +9617,26 @@ function _loadDimPatterns(dimId){
     ? top.cp.cp+' is the most recurring gap — appearing in '+top.asgIds.length+' of '+totalRuns+' review'+(totalRuns!==1?'s':'')+' under '+store.d.dim.label+'.'
     : store.d.dim.label+' shows '+totalExc+' exception'+(totalExc!==1?'s':'')+' across '+totalRuns+' review'+(totalRuns!==1?'s':'')+'.';
 
+  // Truncate to first complete sentence or first N words — no mid-sentence cuts
+  function shortInsight(text,maxWords){
+    if(!text) return '';
+    maxWords=maxWords||25;
+    // Try first sentence (ends with . or ; or :)
+    var m=text.match(/^([^.;:!?]+[.;:!?])/);
+    if(m){
+      var s=m[1].trim();
+      if(s.split(/\s+/).length<=maxWords+5) return s;
+    }
+    // Fall back: take first maxWords words, end cleanly
+    var words=text.split(/\s+/);
+    if(words.length<=maxWords) return text;
+    return words.slice(0,maxWords).join(' ')+'.';
+  }
+
   // Build theme objects (up to 4 checkpoints)
   const themes=ranked.slice(0,4).map(function(item){
-    // Pick the most informative observation snippet (first non-empty, max 120 chars)
     const sampleObs=(item.rows.map(function(r){return r.observation||r.obs||r.finding||'';}).find(Boolean)||'').trim();
-    const insight=sampleObs.length>130?sampleObs.substring(0,130)+'…':sampleObs;
+    const insight=shortInsight(sampleObs,25);
     return {
       name: item.cp.cp||('CP'+String(item.cp.no).padStart(2,'0')),
       cpNo: item.cp.no,
@@ -9733,6 +9748,15 @@ function generateFullPatternMap(dims,rows,asgIds,totalRuns){
     return r>=0.6||item.rows.length>=3?'critical':r>=0.3||item.rows.length>=2?'elevated':'watch';
   }
 
+  function shortSentence(text,maxWords){
+    if(!text) return '';
+    maxWords=maxWords||25;
+    var m=text.match(/^([^.;:!?]+[.;:!?])/);
+    if(m){var s=m[1].trim();if(s.split(/\s+/).length<=maxWords+5) return s;}
+    var words=text.split(/\s+/);
+    return words.length<=maxWords?text:words.slice(0,maxWords).join(' ')+'.';
+  }
+
   // Build themes (top 6 checkpoints by recurrence)
   const themes=ranked.slice(0,6).map(function(item){
     const sample=(item.rows.map(function(r){return r.observation||r.obs||r.finding||'';}).find(Boolean)||'').trim();
@@ -9743,7 +9767,7 @@ function generateFullPatternMap(dims,rows,asgIds,totalRuns){
       frequency: item.asgIds.length,
       totalObs: item.rows.length,
       severity: sev(item),
-      insight: sample.length>140?sample.substring(0,140)+'…':sample,
+      insight: shortSentence(sample,25),
       action: 'Review CP'+String(item.cp.no).padStart(2,'0')+' across all engagements and implement targeted coaching.'
     };
   });
