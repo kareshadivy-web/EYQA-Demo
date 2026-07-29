@@ -9477,25 +9477,6 @@ function renderIntelOverview(container,asgs,rows,dims){
   _renderDimCards(dims,rows,asgIds,totalRuns);
 }
 
-function _toggleDimCard(dimId){
-  const detail=document.getElementById('dim-detail-'+dimId);
-  const chevron=document.getElementById('dim-chevron-'+dimId);
-  const card=document.getElementById('dim-card-'+dimId);
-  if(!detail) return;
-  const isOpen=detail.style.display!=='none';
-  document.querySelectorAll('[id^="dim-detail-"]').forEach(el=>{
-    el.style.display='none';
-    const id=el.id.replace('dim-detail-','');
-    const ch=document.getElementById('dim-chevron-'+id);
-    if(ch){ch.style.transform='';ch.textContent='▸';}
-  });
-  if(!isOpen){
-    detail.style.display='block';
-    if(chevron){chevron.style.transform='rotate(90deg)';chevron.textContent='▾';}
-    setTimeout(()=>card&&card.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
-  }
-}
-
 function _renderDimCards(dims,rows,asgIds,totalRuns){
   const container=document.getElementById('intel-dim-cards');
   if(!container) return;
@@ -9503,16 +9484,9 @@ function _renderDimCards(dims,rows,asgIds,totalRuns){
   const sevBg={green:'#F0FDF4',amber:'#FFF7ED',red:'#FEF2F2',none:'var(--bg2)'};
   const sevBorder={green:'#BBF7D0',amber:'#FED7AA',red:'#FECACA',none:'var(--border)'};
   const sevLabel={green:'Conforming',amber:'Elevated Risk',red:'Critical',none:'No Data'};
-  const whatToFix={
-    risk:'Ensure the RCM is complete — all process risks identified, controls mapped end-to-end, and walkthrough evidence on file.',
-    docs:'Verify workpapers are indexed and cross-referenced. Conclusions must be supported by sufficient, contemporaneous evidence.',
-    test:'Confirm OE/DE tests are properly scoped, sample sizes are justified, and test results are clearly documented with no gaps.',
-    sample:'Check population completeness, sampling methodology is documented, and any deviations or exceptions are explained.',
-    report:'Review that findings are rated consistently, management responses are obtained, and PII / confidential data is handled correctly.'
-  };
 
-  // Need asgs array to look up engagement names — grab from S.intel
-  const asgs=(typeof ASSIGNMENTS!=='undefined'?Object.values(ASSIGNMENTS):[]).filter(function(a){return asgIds.includes(a.id);});
+  // Store data for async pattern loading
+  S.intel._dimStore={};
 
   container.innerHTML='';
   dims.forEach(function(d,i){
@@ -9526,24 +9500,30 @@ function _renderDimCards(dims,rows,asgIds,totalRuns){
     const trendDir=trend.length>=2?(trend[trend.length-1].score>trend[0].score?'↑':trend[trend.length-1].score<trend[0].score?'↓':'→'):'—';
     const trendClr=trendDir==='↑'?'#059669':trendDir==='↓'?'#DC2626':'#9CA3AF';
 
-    // Per-engagement breakdown
     const excRows=rows.filter(function(r){
       const cp=CHECKLIST.find(function(c){return c.no===r.cpNo;})||{};
       return d.dim.match(cp)&&r.status==='Exception';
     });
-    const byAsg={};
-    excRows.forEach(function(r){
-      if(!byAsg[r.asgId]) byAsg[r.asgId]={name:(asgs.find(function(a){return a.id===r.asgId;})||{}).name||r.asgId,cps:[]};
-      if(!byAsg[r.asgId].cps.includes(r.cpNo)) byAsg[r.asgId].cps.push(r.cpNo);
-    });
 
-    const dimCps=CHECKLIST.filter(function(cp){return d.dim.match(cp);});
-    const cpPasses=dimCps.filter(function(cp){return rows.some(function(r){return r.cpNo===cp.no&&r.status==='Pass';});});
-    const cpExcs=dimCps.filter(function(cp){return rows.some(function(r){return r.cpNo===cp.no&&r.status==='Exception';});});
-    const cpNa=dimCps.filter(function(cp){return !rows.some(function(r){return r.cpNo===cp.no&&(r.status==='Pass'||r.status==='Exception');});});
+    // Store for async loading
+    S.intel._dimStore[d.dim.id]={d:d,excRows:excRows,asgIds:asgIds,totalRuns:totalRuns};
 
-    // ── Collapsed header ──────────────────────────────────────────────────────
-    var headerHtml=''
+    var detailHtml='<div id="dim-detail-'+d.dim.id+'" style="display:none;margin-top:16px;border-top:1px solid '+bd+';padding-top:16px">'
+      +'<div id="dim-patterns-'+d.dim.id+'" data-loaded="0">'
+      +'<div style="display:flex;align-items:center;gap:10px;color:var(--t3);font-size:12px;padding:8px 0">'
+      +'<div class="intel-spin" style="width:16px;height:16px;border:2px solid '+bd+';border-top-color:'+clr+';border-radius:50%;animation:spin .8s linear infinite"></div>'
+      +'Analysing observation patterns with AI…'
+      +'</div>'
+      +'</div>'
+      +'</div>';
+
+    var card=document.createElement('div');
+    card.id='dim-card-'+d.dim.id;
+    card.style.cssText='background:'+bg+';border:1px solid '+bd+';border-left:5px solid '+clr+';border-radius:10px;padding:18px 20px;cursor:pointer;transition:box-shadow .2s';
+    card.onmouseenter=function(){this.style.boxShadow='0 4px 20px rgba(0,0,0,0.1)';};
+    card.onmouseleave=function(){this.style.boxShadow='';};
+    card.onclick=function(){_toggleDimCard(d.dim.id);};
+    card.innerHTML=''
       +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
         +'<div style="display:flex;align-items:center;gap:10px">'
           +'<div style="font-size:14px;font-weight:800;color:var(--t1)">'+esc(d.dim.label)+'</div>'
@@ -9555,87 +9535,267 @@ function _renderDimCards(dims,rows,asgIds,totalRuns){
         +'</div>'
       +'</div>'
       +'<div style="font-size:10px;color:var(--t3);margin-top:3px">'+esc(d.dim.desc)+'</div>'
-      +'<div style="background:'+bd+';border-radius:4px;height:4px;margin-top:10px">'
-        +'<div style="width:'+bar+'%;background:'+clr+';border-radius:4px;height:4px"></div>'
+      +'<div style="display:flex;align-items:center;gap:12px;margin-top:10px">'
+        +'<div style="flex:1;background:'+bd+';border-radius:4px;height:4px"><div style="width:'+bar+'%;background:'+clr+';border-radius:4px;height:4px"></div></div>'
+        +'<div style="font-size:11px;font-weight:700;color:'+trendClr+'">'+trendDir+(trendDir!=='—'?' '+(Math.abs((trend[trend.length-1]?trend[trend.length-1].score:0)-(trend[0]?trend[0].score:0)))+'pts':'')+'</div>'
+        +'<div style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:'+clr+'20;color:'+clr+'">'+label+'</div>'
+      +'</div>'
+      +detailHtml;
+
+    container.appendChild(card);
+  });
+
+  // Add "Analyse All Patterns" button above cards
+  const hdr=container.previousElementSibling;
+  if(hdr&&!document.getElementById('intel-all-patterns-btn')){
+    const btn=document.createElement('button');
+    btn.id='intel-all-patterns-btn';
+    btn.textContent='✦ Full Pattern Map';
+    btn.style.cssText='margin-bottom:14px;padding:7px 16px;font-size:11px;font-weight:700;background:#1A2744;color:#FFE600;border:none;border-radius:6px;cursor:pointer;letter-spacing:.5px';
+    btn.onclick=function(e){e.stopPropagation();generateFullPatternMap(dims,rows,asgIds,totalRuns);};
+    container.parentNode.insertBefore(btn,container);
+  }
+}
+
+function _toggleDimCard(dimId){
+  const detail=document.getElementById('dim-detail-'+dimId);
+  const chevron=document.getElementById('dim-chevron-'+dimId);
+  const card=document.getElementById('dim-card-'+dimId);
+  if(!detail) return;
+  const isOpen=detail.style.display!=='none';
+  document.querySelectorAll('[id^="dim-detail-"]').forEach(function(el){
+    el.style.display='none';
+    const id=el.id.replace('dim-detail-','');
+    const ch=document.getElementById('dim-chevron-'+id);
+    if(ch){ch.style.transform='';ch.textContent='▸';}
+  });
+  if(!isOpen){
+    detail.style.display='block';
+    if(chevron){chevron.style.transform='rotate(90deg)';chevron.textContent='▾';}
+    // Trigger AI pattern loading if not yet done
+    const pEl=document.getElementById('dim-patterns-'+dimId);
+    if(pEl&&pEl.dataset.loaded==='0') _loadDimPatterns(dimId);
+    setTimeout(function(){if(card) card.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
+  }
+}
+
+async function _loadDimPatterns(dimId){
+  const store=S.intel._dimStore&&S.intel._dimStore[dimId];
+  const pEl=document.getElementById('dim-patterns-'+dimId);
+  if(!store||!pEl) return;
+
+  const obs=store.excRows.map(function(r){return r.observation||r.obs||r.finding||'';}).filter(Boolean);
+
+  if(!obs.length){
+    pEl.innerHTML='<div style="color:var(--t3);font-size:12px;padding:10px 0">No exceptions recorded for this dimension — nothing to analyse.</div>';
+    pEl.dataset.loaded='1';
+    return;
+  }
+
+  const prompt='You are a senior audit QA analyst. Below are '+obs.length+' QA exception observations from '
+    +store.totalRuns+' review cycles under the "'+store.d.dim.label+'" quality dimension.\n\n'
+    +'Identify 3-4 RECURRING THEMES — patterns that appear across multiple findings, not one-off issues.\n\n'
+    +'For each theme return:\n'
+    +'- name: 3-5 word theme title (e.g. "Control Description Completeness")\n'
+    +'- frequency: integer — how many of the observations relate to this theme\n'
+    +'- severity: exactly one of "critical", "elevated", or "watch"\n'
+    +'- insight: ONE sharp sentence (max 20 words) explaining the pattern and its audit risk implication\n'
+    +'- improving: true if the pattern seems to be improving, false if persisting or worsening\n\n'
+    +'Also return:\n'
+    +'- headline: ONE executive sentence (max 25 words) summarising the overall quality risk of this dimension\n\n'
+    +'Return ONLY valid JSON — no markdown, no explanation:\n'
+    +'{"headline":"...","themes":[{"name":"...","frequency":N,"severity":"...","insight":"...","improving":false}]}\n\n'
+    +'Observations:\n'+obs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
+
+  try{
+    const res=await apiFetch('/v1/messages',{
+      method:'POST',
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:900,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const text=res.content[0].text;
+    const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    pEl.innerHTML=_renderPatternCards(json,store.d,store.excRows.length,store.totalRuns);
+  }catch(e){
+    pEl.innerHTML='<div style="color:var(--t3);font-size:12px;padding:10px 0;border-top:1px solid var(--border)">Pattern analysis unavailable — please check your API key is set.</div>';
+  }
+  pEl.dataset.loaded='1';
+}
+
+function _renderPatternCards(data,d,totalExc,totalRuns){
+  const sevClr={critical:'#DC2626',elevated:'#D97706',watch:'#2563EB'};
+  const sevBg={critical:'rgba(220,38,38,0.08)',elevated:'rgba(217,119,6,0.08)',watch:'rgba(37,99,235,0.08)'};
+  const sevLabel={critical:'CRITICAL',elevated:'ELEVATED',watch:'WATCH'};
+  const themes=(data.themes||[]).slice(0,4);
+  const headline=data.headline||'';
+  if(!themes.length) return '<div style="color:var(--t3);font-size:12px">No recurring patterns identified.</div>';
+
+  const top=themes[0];
+  const rest=themes.slice(1);
+  const topClr=sevClr[top.severity]||'#DC2626';
+
+  var h='';
+
+  // Executive headline banner
+  if(headline){
+    h+='<div style="padding:12px 16px;background:#1A2744;border-radius:8px;margin-bottom:14px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(255,230,0,0.8);text-transform:uppercase;margin-bottom:4px">AI Pattern Analysis</div>'
+      +'<div style="font-size:13px;color:#fff;line-height:1.55;font-style:italic">&#8220;'+esc(headline)+'&#8221;</div>'
       +'</div>';
+  }
 
-    // ── Expanded detail (thematic style) ─────────────────────────────────────
-    // Per-engagement chips
-    var chipsHtml='';
-    var asgKeys=Object.keys(byAsg);
-    if(asgKeys.length){
-      chipsHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">';
-      asgKeys.forEach(function(k){
-        var x=byAsg[k];
-        chipsHtml+='<div style="background:'+clr+'15;border:1px solid '+clr+'40;border-radius:4px;padding:3px 10px;font-size:10px;font-weight:700;color:'+clr+'">'+esc(x.name)+' <span style="opacity:.6;font-weight:400">· '+x.cps.length+' CP'+(x.cps.length!==1?'s':'')+'</span></div>';
-      });
-      chipsHtml+='</div>';
-    }
+  // Top pattern — hero card
+  h+='<div style="padding:16px 18px;background:'+sevBg[top.severity]+';border:1px solid '+topClr+'30;border-left:4px solid '+topClr+';border-radius:8px;margin-bottom:12px">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      +'<span style="font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 8px;border-radius:3px;background:'+topClr+';color:#fff">'+(sevLabel[top.severity]||'CRITICAL')+'</span>'
+      +'<span style="font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.5px;text-transform:uppercase">Most Significant Pattern</span>'
+    +'</div>'
+    +'<div style="font-size:16px;font-weight:800;color:var(--t1);margin-bottom:6px">'+esc(top.name)+'</div>'
+    +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:10px">'+esc(top.insight)+'</div>'
+    +'<div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--t3)">'
+      +'<span>Found in <strong>'+top.frequency+'</strong> of '+totalExc+' observations</span>'
+      +'<span style="color:'+(top.improving?'#059669':'#DC2626')+';font-weight:700">'+(top.improving?'↑ Improving':'↓ Persisting')+'</span>'
+    +'</div>'
+    +'</div>';
 
-    // Checkpoint exception rows — FULL observation text, no truncation
-    var excDetailHtml='';
-    if(cpExcs.length){
-      excDetailHtml+='<div style="border-top:1px solid '+bd+';padding-top:14px;margin-bottom:4px">';
-      excDetailHtml+='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3);margin-bottom:10px">Checkpoints with Exceptions</div>';
-      excDetailHtml+='<div style="display:flex;flex-direction:column;gap:8px">';
-      cpExcs.forEach(function(cp){
-        var excR=rows.filter(function(r){return r.cpNo===cp.no&&r.status==='Exception';});
-        var obsArr=excR.map(function(r){return r.observation||r.obs||r.finding||'';}).filter(Boolean);
-        excDetailHtml+='<div style="padding:12px 14px;background:rgba(0,0,0,0.04);border-radius:6px;border-left:3px solid '+clr+'">';
-        excDetailHtml+='<div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:6px">CP'+String(cp.no).padStart(2,'0')+' — '+esc(cp.cp)+'</div>';
-        obsArr.forEach(function(o){
-          excDetailHtml+='<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-top:4px">'+esc(o)+'</div>';
-        });
-        excDetailHtml+='</div>';
-      });
-      excDetailHtml+='</div></div>';
-    }
+  // Remaining patterns — 2-col grid
+  if(rest.length){
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    rest.forEach(function(t){
+      const tc=sevClr[t.severity]||'#D97706';
+      h+='<div style="padding:13px 15px;background:'+sevBg[t.severity]+';border:1px solid '+tc+'25;border-left:3px solid '+tc+';border-radius:8px">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+          +'<span style="font-size:8px;font-weight:800;letter-spacing:1px;padding:1px 6px;border-radius:3px;background:'+tc+';color:#fff">'+(sevLabel[t.severity]||'ELEVATED')+'</span>'
+        +'</div>'
+        +'<div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:5px">'+esc(t.name)+'</div>'
+        +'<div style="font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:8px">'+esc(t.insight)+'</div>'
+        +'<div style="font-size:10px;color:var(--t3)"><strong>'+t.frequency+'</strong> obs · <span style="color:'+(t.improving?'#059669':'#DC2626')+';font-weight:700">'+(t.improving?'↑ Improving':'↓ Persisting')+'</span></div>'
+        +'</div>';
+    });
+    h+='</div>';
+  }
+  return h;
+}
 
-    // Conforming + not reviewed summary
-    var summaryHtml='';
-    if(cpPasses.length||cpNa.length){
-      summaryHtml='<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--t3)">';
-      if(cpPasses.length) summaryHtml+='<span><span style="color:#059669;font-weight:700">✓ Conforming:</span> '+cpPasses.map(function(cp){return 'CP'+String(cp.no).padStart(2,'0');}).join(', ')+'</span>';
-      if(cpNa.length) summaryHtml+='<span><span style="font-weight:600">○ Not reviewed:</span> '+cpNa.map(function(cp){return 'CP'+String(cp.no).padStart(2,'0');}).join(', ')+'</span>';
-      summaryHtml+='</div>';
-    }
+async function generateFullPatternMap(dims,rows,asgIds,totalRuns){
+  // Find or create modal overlay
+  var modal=document.getElementById('intel-pattern-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='intel-pattern-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px';
+    modal.onclick=function(e){if(e.target===modal) modal.remove();};
+    document.body.appendChild(modal);
+  }
 
-    // Trend row
-    var trendHtml='';
-    if(trend.length>=2){
-      var trendItems=trend.map(function(t,ti){
-        return '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:'+clr+'">'+t.score+'%</div><div style="font-size:9px;color:var(--t3)">Run '+(ti+1)+'</div></div>';
-      }).join('<div style="color:var(--t3);font-size:14px;padding:0 4px">→</div>');
-      trendHtml='<div style="margin-top:14px;padding:12px 14px;background:rgba(0,0,0,0.04);border-radius:6px">'
-        +'<div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Score Trend Across Reviews</div>'
-        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+trendItems+'</div>'
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--bg1,#fff);border-radius:12px;width:100%;max-width:860px;padding:32px;position:relative;margin:auto';
+  box.innerHTML='<button onclick="document.getElementById(\'intel-pattern-modal\').remove()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button>'
+    +'<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">QA Pattern Intelligence</div>'
+    +'<div style="font-size:22px;font-weight:800;color:var(--t1);margin-bottom:20px">Full Pattern Map</div>'
+    +'<div id="pattern-map-body" style="display:flex;flex-direction:column;gap:16px">'
+      +'<div style="display:flex;align-items:center;gap:12px;color:var(--t3);font-size:13px">'
+        +'<div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:#1A2744;border-radius:50%;animation:spin .8s linear infinite"></div>'
+        +'Analysing patterns across all dimensions…'
+      +'</div>'
+    +'</div>';
+  modal.innerHTML='';
+  modal.appendChild(box);
+
+  // Gather all exception observations with dimension label
+  const allObs=[];
+  dims.forEach(function(d){
+    rows.forEach(function(r){
+      const cp=CHECKLIST.find(function(c){return c.no===r.cpNo;})||{};
+      if(d.dim.match(cp)&&r.status==='Exception'){
+        const txt=r.observation||r.obs||r.finding||'';
+        if(txt) allObs.push('['+d.dim.short+'] '+txt);
+      }
+    });
+  });
+
+  if(!allObs.length){
+    document.getElementById('pattern-map-body').innerHTML='<div style="color:var(--t3);font-size:13px">No exceptions found to analyse.</div>';
+    return;
+  }
+
+  const prompt='You are a senior audit QA Director reviewing a client\'s quality performance across '
+    +totalRuns+' QA review cycles.\n\n'
+    +'Below are '+allObs.length+' QA exception observations tagged by quality dimension.\n\n'
+    +'Identify 5-7 CROSS-CUTTING THEMES — patterns that represent systemic quality issues, not one-off findings.\n\n'
+    +'For each theme:\n'
+    +'- name: 3-5 word theme title\n'
+    +'- dimension: which quality area it primarily affects (Risk Coverage / Documentation / Test Execution / Sampling / Reporting)\n'
+    +'- frequency: integer count of related observations\n'
+    +'- severity: "critical", "elevated", or "watch"\n'
+    +'- insight: ONE razor-sharp sentence (max 20 words) naming the root cause and risk\n'
+    +'- action: ONE concrete action sentence (max 20 words) for the engagement team\n'
+    +'- improving: true or false\n\n'
+    +'Also:\n'
+    +'- executiveSummary: 2-3 sentence board-level summary of the client\'s quality posture\n'
+    +'- topRisk: the single highest-priority theme name\n\n'
+    +'Return ONLY valid JSON, no markdown:\n'
+    +'{"executiveSummary":"...","topRisk":"...","themes":[...]}\n\n'
+    +'Observations:\n'+allObs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
+
+  try{
+    const res=await apiFetch('/v1/messages',{
+      method:'POST',
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:1400,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const text=res.content[0].text;
+    const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    const themes=json.themes||[];
+    const sevClr={critical:'#DC2626',elevated:'#D97706',watch:'#2563EB'};
+    const sevBg={critical:'rgba(220,38,38,0.08)',elevated:'rgba(217,119,6,0.08)',watch:'rgba(37,99,235,0.08)'};
+    const sevLabel={critical:'CRITICAL',elevated:'ELEVATED',watch:'WATCH'};
+
+    var body=document.getElementById('pattern-map-body');
+    var h='';
+
+    // Executive summary banner
+    if(json.executiveSummary){
+      h+='<div style="padding:20px 24px;background:#1A2744;border-radius:10px;margin-bottom:6px">'
+        +'<div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(255,230,0,0.8);text-transform:uppercase;margin-bottom:8px">Executive Summary</div>'
+        +'<div style="font-size:14px;color:rgba(255,255,255,0.9);line-height:1.7">'+esc(json.executiveSummary)+'</div>'
+        +(json.topRisk?'<div style="margin-top:10px;font-size:11px;color:rgba(255,230,0,0.7)">Top Priority: <strong style="color:#FFE600">'+esc(json.topRisk)+'</strong></div>':'')
         +'</div>';
     }
 
-    var detailHtml='<div id="dim-detail-'+d.dim.id+'" style="display:none;margin-top:14px">'
-      // Guidance banner
-      +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:14px;padding:10px 14px;background:'+clr+'12;border-radius:6px;border-left:3px solid '+clr+'">'+whatToFix[d.dim.id]+'</div>'
-      // Stats bar
-      +'<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:var(--t2)">'
-        +'<span><strong style="color:'+clr+'">'+d.exc+'</strong> exception'+(d.exc!==1?'s':'')+' found</span>'
-        +'<span>Affected <strong>'+d.affectedAsgs.length+'</strong> of <strong>'+totalRuns+'</strong> QA run'+(totalRuns!==1?'s':'')+'</span>'
-        +(d.cpNos&&d.cpNos.length?'<span>Failing CPs: <strong>'+d.cpNos.map(function(n){return 'CP'+String(n).padStart(2,'0');}).join(', ')+'</strong></span>':'')
-      +'</div>'
-      +chipsHtml
-      +excDetailHtml
-      +summaryHtml
-      +trendHtml
-      +'</div>';
-
-    var card=document.createElement('div');
-    card.id='dim-card-'+d.dim.id;
-    card.style.cssText='background:'+bg+';border:1px solid '+bd+';border-left:5px solid '+clr+';border-radius:10px;padding:18px 20px;cursor:pointer;transition:box-shadow .2s';
-    card.onmouseenter=function(){this.style.boxShadow='0 4px 20px rgba(0,0,0,0.1)';};
-    card.onmouseleave=function(){this.style.boxShadow='';};
-    card.onclick=function(){_toggleDimCard(d.dim.id);};
-    card.innerHTML=headerHtml+detailHtml;
-    container.appendChild(card);
-  });
+    // Theme grid
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    themes.forEach(function(t,i){
+      const tc=sevClr[t.severity]||'#D97706';
+      const isTop=t.name===json.topRisk||i===0;
+      h+='<div style="padding:16px 18px;background:'+sevBg[t.severity]+';border:1px solid '+tc+(isTop?'50':'25')+';border-left:'+(isTop?'5':'3')+'px solid '+tc+';border-radius:10px'+(isTop?';grid-column:1/-1':'')+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+          +'<div style="display:flex;align-items:center;gap:8px">'
+            +'<span style="font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 8px;border-radius:3px;background:'+tc+';color:#fff">'+(sevLabel[t.severity]||'ELEVATED')+'</span>'
+            +(isTop?'<span style="font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.5px">TOP PRIORITY</span>':'')
+          +'</div>'
+          +'<span style="font-size:9px;padding:1px 7px;border-radius:10px;background:'+tc+'20;color:'+tc+';font-weight:700">'+esc(t.dimension||'')+'</span>'
+        +'</div>'
+        +'<div style="font-size:'+(isTop?'16':'14')+'px;font-weight:800;color:var(--t1);margin-bottom:6px">'+esc(t.name)+'</div>'
+        +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:6px">'+esc(t.insight)+'</div>'
+        +'<div style="font-size:11px;color:var(--t3);background:rgba(0,0,0,0.04);border-radius:5px;padding:7px 10px;margin-bottom:8px;line-height:1.5"><strong>Action:</strong> '+esc(t.action)+'</div>'
+        +'<div style="display:flex;align-items:center;gap:14px;font-size:10px;color:var(--t3)">'
+          +'<span><strong>'+t.frequency+'</strong> observations</span>'
+          +'<span style="color:'+(t.improving?'#059669':'#DC2626')+';font-weight:700">'+(t.improving?'↑ Improving':'↓ Persisting')+'</span>'
+        +'</div>'
+        +'</div>';
+    });
+    h+='</div>';
+    body.innerHTML=h;
+  }catch(err){
+    document.getElementById('pattern-map-body').innerHTML='<div style="color:var(--t3);font-size:13px">Pattern analysis failed — please check your API key.</div>';
+  }
 }
 
 function _drawIntelRings(dims){
