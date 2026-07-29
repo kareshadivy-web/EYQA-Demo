@@ -9608,13 +9608,10 @@ async function _loadDimPatterns(dimId){
     +'Observations:\n'+obs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
 
   try{
-    const res=await apiFetch('/v1/messages',{
-      method:'POST',
-      body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:900,
-        messages:[{role:'user',content:prompt}]
-      })
+    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:900,
+      messages:[{role:'user',content:prompt}]
     });
     const text=res.content[0].text;
     const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
@@ -9742,13 +9739,10 @@ async function generateFullPatternMap(dims,rows,asgIds,totalRuns){
     +'Observations:\n'+allObs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
 
   try{
-    const res=await apiFetch('/v1/messages',{
-      method:'POST',
-      body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:1400,
-        messages:[{role:'user',content:prompt}]
-      })
+    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:1400,
+      messages:[{role:'user',content:prompt}]
     });
     const text=res.content[0].text;
     const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
