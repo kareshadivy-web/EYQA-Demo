@@ -9428,14 +9428,11 @@ function renderIntelOverview(container,asgs,rows,dims){
   container.innerHTML=`
 <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start">
 
-  <!-- Left: Radar Chart -->
+  <!-- Left: Ring Score Panel -->
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:24px">
     <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">Quality Signature</div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:16px">${esc((CLIENTS.find(c=>c.id===S.intel.clientId)||{}).name||'')} · ${totalRuns} review${totalRuns!==1?'s':''}</div>
-    <canvas id="intel-radar" width="292" height="260" style="display:block;margin:0 auto"></canvas>
-    <div style="display:flex;justify-content:center;gap:16px;margin-top:14px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--t3)"><div style="width:10px;height:10px;border-radius:2px;background:#1E3A5F;opacity:.7"></div>Current</div>
-    </div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:20px">${esc((CLIENTS.find(c=>c.id===S.intel.clientId)||{}).name||'')} · ${totalRuns} review${totalRuns!==1?'s':''}</div>
+    <div id="intel-rings" style="display:flex;flex-direction:column;gap:0"></div>
   </div>
 
   <!-- Right: Dimension Cards -->
@@ -9511,100 +9508,61 @@ function renderIntelOverview(container,asgs,rows,dims){
 </div>`;
 
   // Draw radar after DOM ready
-  requestAnimationFrame(()=>_drawIntelRadar(dims));
+  _drawIntelRings(dims);
 }
 
-function _drawIntelRadar(dims){
-  const canvas=document.getElementById('intel-radar');
-  if(!canvas) return;
-  const ctx=canvas.getContext('2d');
-  const W=canvas.width, H=canvas.height;
-  const cx=W/2, cy=H/2+10, R=Math.min(W,H)/2-40;
-  const N=dims.length;
-  const isDark=document.documentElement.getAttribute('data-theme')==='dark'||
-    (!document.documentElement.getAttribute('data-theme')&&window.matchMedia('(prefers-color-scheme:dark)').matches);
-  const gridClr=isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)';
-  const labelClr=isDark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.45)';
-  ctx.clearRect(0,0,W,H);
-  const angle=i=>(Math.PI*2/N)*i-Math.PI/2;
+function _drawIntelRings(dims){
+  const container=document.getElementById('intel-rings');
+  if(!container) return;
+  const sevColor={green:'#10B981',amber:'#F59E0B',red:'#EF4444',none:'#D1D5DB'};
+  const sevLabel={green:'Conforming',amber:'Elevated Risk',red:'Critical',none:'No Data'};
+  const trackClr='rgba(0,0,0,0.06)';
+  const r=30, stroke=7, circ=2*Math.PI*r;
 
-  // Grid rings
-  [0.25,0.5,0.75,1].forEach(r=>{
-    ctx.beginPath();
-    for(let i=0;i<N;i++){
-      const a=angle(i), x=cx+Math.cos(a)*R*r, y=cy+Math.sin(a)*R*r;
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle=gridClr; ctx.lineWidth=1; ctx.stroke();
-    // Ring label
-    ctx.fillStyle=labelClr; ctx.font='9px system-ui'; ctx.textAlign='center';
-    ctx.fillText(Math.round(r*100)+'%',cx+2,cy-R*r+3);
+  container.innerHTML=dims.map((d,i)=>{
+    const sc=d.score!==null?d.score:0;
+    const clr=sevColor[d.severity];
+    const dash=circ*(sc/100);
+    const gap=circ-dash;
+    const label=sevLabel[d.severity];
+    const icons=['◈','◉','◆','◇','◎'];
+    return `<div class="intel-ring-row" style="display:flex;align-items:center;gap:16px;padding:11px 0;border-bottom:1px solid var(--border);opacity:0;transform:translateX(-12px);transition:opacity .4s ease ${i*80}ms,transform .4s ease ${i*80}ms">
+      <div style="position:relative;flex-shrink:0;width:70px;height:70px">
+        <svg width="70" height="70" viewBox="0 0 70 70" style="transform:rotate(-90deg)">
+          <circle cx="35" cy="35" r="${r}" fill="none" stroke="${trackClr}" stroke-width="${stroke}"/>
+          <circle cx="35" cy="35" r="${r}" fill="none" stroke="${clr}" stroke-width="${stroke}"
+            stroke-linecap="round"
+            stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}"
+            style="transition:stroke-dasharray .8s cubic-bezier(.4,0,.2,1) ${i*80+100}ms"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column">
+          <div style="font-size:15px;font-weight:800;color:${clr};line-height:1;font-variant-numeric:tabular-nums">${d.score!==null?sc:'—'}</div>
+          ${d.score!==null?`<div style="font-size:8px;color:var(--t3);font-weight:600">%</div>`:''}
+        </div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+          <span style="font-size:12px;font-weight:700;color:var(--t1)">${esc(d.dim.short)}</span>
+          <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${clr}22;color:${clr};letter-spacing:.3px">${label}</span>
+        </div>
+        <div style="font-size:10px;color:var(--t3);line-height:1.4;margin-bottom:6px">${d.exc} exception${d.exc!==1?'s':''} · ${d.tot} checkpoint${d.tot!==1?'s':''} reviewed</div>
+        <div style="background:var(--border);border-radius:4px;height:3px;overflow:hidden">
+          <div style="height:3px;background:${clr};border-radius:4px;width:0;transition:width .8s cubic-bezier(.4,0,.2,1) ${i*80+100}ms" data-w="${sc}%"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Trigger animations on next frame
+  requestAnimationFrame(()=>{
+    container.querySelectorAll('.intel-ring-row').forEach(el=>{
+      el.style.opacity='1'; el.style.transform='translateX(0)';
+    });
+    container.querySelectorAll('[data-w]').forEach(el=>{
+      el.style.width=el.getAttribute('data-w');
+    });
   });
-
-  // Axes
-  dims.forEach((_,i)=>{
-    const a=angle(i);
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);
-    ctx.strokeStyle=gridClr; ctx.lineWidth=1; ctx.stroke();
-  });
-
-  // Animate fill
-  let frame=0, total=40;
-  function drawFrame(){
-    ctx.clearRect(0,0,W,H);
-    // Redraw grid
-    [0.25,0.5,0.75,1].forEach(r=>{
-      ctx.beginPath();
-      for(let i=0;i<N;i++){
-        const a=angle(i),x=cx+Math.cos(a)*R*r,y=cy+Math.sin(a)*R*r;
-        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-      }
-      ctx.closePath(); ctx.strokeStyle=gridClr; ctx.lineWidth=1; ctx.stroke();
-    });
-    dims.forEach((_,i)=>{
-      const a=angle(i);
-      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);
-      ctx.strokeStyle=gridClr; ctx.lineWidth=1; ctx.stroke();
-    });
-
-    const prog=Math.min(frame/total,1);
-    const ease=1-Math.pow(1-prog,3);
-
-    // Data polygon
-    ctx.beginPath();
-    dims.forEach((d,i)=>{
-      const sc=(d.score!==null?d.score:0)/100*ease;
-      const a=angle(i),x=cx+Math.cos(a)*R*sc,y=cy+Math.sin(a)*R*sc;
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-    });
-    ctx.closePath();
-    ctx.fillStyle='rgba(30,58,95,0.25)'; ctx.fill();
-    ctx.strokeStyle='#1E3A5F'; ctx.lineWidth=2; ctx.stroke();
-
-    // Dots
-    dims.forEach((d,i)=>{
-      const sc=(d.score!==null?d.score:0)/100*ease;
-      const a=angle(i),x=cx+Math.cos(a)*R*sc,y=cy+Math.sin(a)*R*sc;
-      const clr=d.severity==='red'?'#DC2626':d.severity==='amber'?'#D97706':'#059669';
-      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
-      ctx.fillStyle=clr; ctx.fill();
-      ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
-    });
-
-    // Labels (only on last frame for clarity)
-    if(prog>=1){
-      dims.forEach((d,i)=>{
-        const a=angle(i),lx=cx+Math.cos(a)*(R+24),ly=cy+Math.sin(a)*(R+24);
-        ctx.fillStyle=labelClr; ctx.font='bold 9.5px system-ui';
-        ctx.textAlign=lx<cx-5?'right':lx>cx+5?'left':'center';
-        ctx.fillText(d.dim.short,lx,ly);
-      });
-    }
-    frame++;
-    if(frame<=total) requestAnimationFrame(drawFrame);
-  }
-  drawFrame();
+}
 }
 
 /* ── Tab: Theme Deep-Dive ─────────────────────────────────────────────────── */
