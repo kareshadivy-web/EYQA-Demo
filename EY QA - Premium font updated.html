@@ -9324,7 +9324,6 @@ function renderIntelligence(){
   const diagnostic=qaDiagnostic(asgs,rows,dims);
   const tabs=[
     {id:'overview',label:'Quality Overview'},
-    {id:'thematic',label:'Theme Deep-Dive'},
     {id:'trend',   label:'Maturity Trajectory'},
     {id:'narrative',label:'AI Briefing Note'},
   ];
@@ -9413,7 +9412,6 @@ function renderIntelligenceTab(){
   const dims=qaByDimension(rows);
   const t=ci.tab;
   if(t==='overview')  renderIntelOverview(container,asgs,rows,dims);
-  else if(t==='thematic')  renderIntelThematic(container,asgs,rows,dims);
   else if(t==='trend')     renderIntelTrend(container,asgs,rows,dims);
   else if(t==='narrative') renderIntelNarrativeTab(container,asgs,rows,dims);
 }
@@ -9438,89 +9436,9 @@ function renderIntelOverview(container,asgs,rows,dims){
   <!-- Right: Dimension Cards (interactive expand) -->
   <div>
     <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:12px">Five Quality Dimensions <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">— click any card to explore</span></div>
-    <div style="display:flex;flex-direction:column;gap:10px" id="intel-dim-cards">
-      ${dims.map((d,i)=>{
-        const sc=d.score;
-        const clr=sevColor[d.severity];
-        const bar=sc!==null?sc:0;
-        const trend=qaDimTrend(asgIds,d.dim.id).filter(t=>t.score!==null);
-        const trendDir=trend.length>=2?(trend[trend.length-1].score>trend[0].score?'↑':trend[trend.length-1].score<trend[0].score?'↓':'→'):'—';
-        const trendClr=trendDir==='↑'?'#059669':trendDir==='↓'?'#DC2626':'#9CA3AF';
-        // Build checkpoint detail rows for this dimension
-        const dimCps=CHECKLIST.filter(cp=>d.dim.match(cp));
-        const excRows=rows.filter(r=>{
-          const cp=CHECKLIST.find(c=>c.no===r.cpNo)||{};
-          return d.dim.match(cp)&&r.status==='Exception';
-        });
-        const whatToFix={
-          risk:'Ensure RCM is complete, all process risks are identified, and controls are mapped with clear rationale.',
-          docs:'Verify workpapers are indexed, cross-referenced, and conclusions are supported by sufficient evidence.',
-          test:'Confirm OE/DE tests are properly scoped, sample sizes justified, and results clearly documented.',
-          sample:'Check population completeness, sampling methodology documented, and deviations explained.',
-          report:'Review that findings are rated consistently, management responses are obtained, and PII is handled correctly.'
-        };
-        const cpPasses=dimCps.filter(cp=>rows.some(r=>r.cpNo===cp.no&&r.status==='Pass'));
-        const cpExcs=dimCps.filter(cp=>rows.some(r=>r.cpNo===cp.no&&r.status==='Exception'));
-        const cpNa=dimCps.filter(cp=>!rows.some(r=>r.cpNo===cp.no&&(r.status==='Pass'||r.status==='Exception')));
-        const detailHtml=`
-          <div id="dim-detail-${d.dim.id}" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px;animation:fadeIn .25s ease">
-            <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase">What this dimension covers</div>
-            <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:12px;padding:10px 12px;background:${clr}11;border-radius:6px;border-left:3px solid ${clr}">${whatToFix[d.dim.id]||d.dim.desc}</div>
-            ${cpExcs.length?`
-            <div style="font-size:11px;font-weight:700;color:#DC2626;letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase">⚠ Checkpoints with Exceptions (${cpExcs.length})</div>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-              ${cpExcs.map(cp=>{
-                const excR=rows.filter(r=>r.cpNo===cp.no&&r.status==='Exception');
-                const obs=excR.map(r=>r.observation||r.obs||r.finding||'Exception noted').filter(Boolean);
-                return '<div style="padding:8px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA">'+
-                  '<div style="font-size:11px;font-weight:700;color:#991B1B;margin-bottom:4px">CP'+String(cp.no).padStart(2,'0')+' — '+esc(cp.cp)+'</div>'+
-                  (obs.length?obs.map(o=>'<div style="font-size:11px;color:#7F1D1D;line-height:1.5;margin-top:3px">• '+esc(o.substring(0,180))+(o.length>180?'…':'')+'</div>').join(''):'')+
-                '</div>';
-              }).join('') }
-            </div>`:''}
-            ${cpPasses.length?`<div style="font-size:11px;color:var(--t3);margin-bottom:6px"><span style="color:#059669;font-weight:700">✓ Conforming:</span> ${cpPasses.map(cp=>'CP'+String(cp.no).padStart(2,'0')).join(', ')}</div>`:''}
-            ${cpNa.length?`<div style="font-size:11px;color:var(--t3)"><span style="font-weight:700">○ Not yet reviewed:</span> ${cpNa.map(cp=>'CP'+String(cp.no).padStart(2,'0')).join(', ')}</div>`:''}
-            ${trend.length>=2?`
-            <div style="margin-top:12px;padding:10px 12px;background:var(--bg3,var(--border));border-radius:6px">
-              <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Score Trend</div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                ${trend.map((t,ti)=>'<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:'+clr+'">'+t.score+'%</div><div style="font-size:9px;color:var(--t3)">Run '+( ti+1)+'</div></div>').join('<div style="color:var(--t3);font-size:12px">→</div>')}
-              </div>
-            </div>`:''}
-          </div>`;
-        return \`<div id="dim-card-\${d.dim.id}"
-          onclick="_toggleDimCard(\'${d.dim.id}\')"
-          style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid \${clr};border-radius:8px;padding:14px 16px;cursor:pointer;transition:all .2s"
-          onmouseover="this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.08)\'"
-          onmouseout="this.style.boxShadow=\'\'">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="font-size:13px;font-weight:700;color:var(--t1)">\${esc(d.dim.label)}</div>
-                <div id="dim-chevron-\${d.dim.id}" style="font-size:11px;color:var(--t3);transition:transform .2s">▸</div>
-              </div>
-              <div style="font-size:10px;color:var(--t3);margin-top:2px">\${esc(d.dim.desc)}</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0;margin-left:16px">
-              <div style="font-size:26px;font-weight:800;color:\${clr};font-variant-numeric:tabular-nums;line-height:1">\${sc!==null?sc+'%':'—'}</div>
-              <div style="font-size:11px;color:\${trendClr};font-weight:700;margin-top:2px">\${trendDir} \${trendDir!=='—'?(Math.abs((trend[trend.length-1]?.score||0)-(trend[0]?.score||0)))+'pts':''}</div>
-            </div>
-          </div>
-          <div style="background:var(--border);border-radius:4px;height:5px">
-            <div style="width:\${bar}%;background:\${clr};border-radius:4px;height:5px;transition:width .6s ease"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--t3)">
-            <span>\${d.exc} exception\${d.exc!==1?'s':''} · \${d.affectedAsgs.length} of \${totalRuns} run\${totalRuns!==1?'s':''}</span>
-            <span style="color:\${clr};font-weight:700">\${sevLabel[d.severity]}</span>
-          </div>
-          \${detailHtml}
-        </div>\`;
-      }).join('')}
-    </div>
+    <div style="display:flex;flex-direction:column;gap:10px" id="intel-dim-cards"></div>
   </div>
 </div>
-
-<!-- Priority Actions Panel -->
 <div style="margin-top:20px;background:#1A2744;border-radius:10px;padding:24px;color:#fff">
   <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,230,0,0.8);margin-bottom:16px">Priority Actions</div>
   <div style="display:flex;flex-direction:column;gap:10px">
@@ -9556,6 +9474,7 @@ function renderIntelOverview(container,asgs,rows,dims){
 
   // Draw radar after DOM ready
   _drawIntelRings(dims);
+  _renderDimCards(dims,rows,asgIds,totalRuns);
 }
 
 function _toggleDimCard(dimId){
@@ -9564,7 +9483,6 @@ function _toggleDimCard(dimId){
   const card=document.getElementById('dim-card-'+dimId);
   if(!detail) return;
   const isOpen=detail.style.display!=='none';
-  // Close all others
   document.querySelectorAll('[id^="dim-detail-"]').forEach(el=>{
     el.style.display='none';
     const id=el.id.replace('dim-detail-','');
@@ -9574,9 +9492,117 @@ function _toggleDimCard(dimId){
   if(!isOpen){
     detail.style.display='block';
     if(chevron){chevron.style.transform='rotate(90deg)';chevron.textContent='▾';}
-    // Scroll card into view gently
     setTimeout(()=>card&&card.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
   }
+}
+
+function _renderDimCards(dims,rows,asgIds,totalRuns){
+  const container=document.getElementById('intel-dim-cards');
+  if(!container) return;
+  const sevColor={green:'#10B981',amber:'#F59E0B',red:'#EF4444',none:'#9CA3AF'};
+  const sevLabel={green:'Conforming',amber:'Elevated Risk',red:'Critical',none:'No Data'};
+  const whatToFix={
+    risk:'Ensure the RCM is complete — all process risks identified, controls mapped end-to-end, and walkthrough evidence on file.',
+    docs:'Verify workpapers are indexed and cross-referenced. Conclusions must be supported by sufficient, contemporaneous evidence.',
+    test:'Confirm OE/DE tests are properly scoped, sample sizes are justified, and test results are clearly documented with no gaps.',
+    sample:'Check population completeness, sampling methodology is documented, and any deviations or exceptions are explained.',
+    report:'Review that findings are rated consistently, management responses are obtained, and PII / confidential data is handled correctly.'
+  };
+
+  container.innerHTML='';
+  dims.forEach(function(d,i){
+    const sc=d.score;
+    const clr=sevColor[d.severity];
+    const label=sevLabel[d.severity];
+    const bar=sc!==null?sc:0;
+    const trend=qaDimTrend(asgIds,d.dim.id).filter(function(t){return t.score!==null;});
+    const trendDir=trend.length>=2?(trend[trend.length-1].score>trend[0].score?'↑':trend[trend.length-1].score<trend[0].score?'↓':'→'):'—';
+    const trendClr=trendDir==='↑'?'#10B981':trendDir==='↓'?'#EF4444':'#9CA3AF';
+
+    const dimCps=CHECKLIST.filter(function(cp){return d.dim.match(cp);});
+    const excRows=rows.filter(function(r){
+      const cp=CHECKLIST.find(function(c){return c.no===r.cpNo;})||{};
+      return d.dim.match(cp)&&r.status==='Exception';
+    });
+    const cpPasses=dimCps.filter(function(cp){return rows.some(function(r){return r.cpNo===cp.no&&r.status==='Pass';});});
+    const cpExcs=dimCps.filter(function(cp){return rows.some(function(r){return r.cpNo===cp.no&&r.status==='Exception';});});
+    const cpNa=dimCps.filter(function(cp){return !rows.some(function(r){return r.cpNo===cp.no&&(r.status==='Pass'||r.status==='Exception');});});
+
+    // Build exception checkpoint rows HTML
+    var excHtml='';
+    if(cpExcs.length){
+      excHtml='<div style="font-size:11px;font-weight:700;color:#EF4444;letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase">⚠ Checkpoints with Exceptions ('+cpExcs.length+')</div>';
+      excHtml+='<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">';
+      cpExcs.forEach(function(cp){
+        var excR=rows.filter(function(r){return r.cpNo===cp.no&&r.status==='Exception';});
+        var obsArr=excR.map(function(r){return r.observation||r.obs||r.finding||'';}).filter(Boolean);
+        excHtml+='<div style="padding:8px 12px;background:#FEF2F2;border-radius:6px;border:1px solid #FECACA">';
+        excHtml+='<div style="font-size:11px;font-weight:700;color:#991B1B;margin-bottom:4px">CP'+String(cp.no).padStart(2,'0')+' — '+esc(cp.cp)+'</div>';
+        obsArr.forEach(function(o){
+          excHtml+='<div style="font-size:11px;color:#7F1D1D;line-height:1.5;margin-top:3px">• '+esc(o.substring(0,200))+(o.length>200?'…':'')+'</div>';
+        });
+        excHtml+='</div>';
+      });
+      excHtml+='</div>';
+    }
+
+    var passHtml='';
+    if(cpPasses.length){
+      passHtml='<div style="font-size:11px;color:var(--t3);margin-bottom:6px"><span style="color:#10B981;font-weight:700">✓ Conforming:</span> '+cpPasses.map(function(cp){return 'CP'+String(cp.no).padStart(2,'0');}).join(', ')+'</div>';
+    }
+    var naHtml='';
+    if(cpNa.length){
+      naHtml='<div style="font-size:11px;color:var(--t3)"><span style="font-weight:700">○ Not yet reviewed:</span> '+cpNa.map(function(cp){return 'CP'+String(cp.no).padStart(2,'0');}).join(', ')+'</div>';
+    }
+
+    var trendHtml='';
+    if(trend.length>=2){
+      var trendItems=trend.map(function(t,ti){
+        return '<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:'+clr+'">'+t.score+'%</div><div style="font-size:9px;color:var(--t3)">Run '+(ti+1)+'</div></div>';
+      }).join('<div style="color:var(--t3);font-size:12px;padding:0 2px">→</div>');
+      trendHtml='<div style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,0.03);border-radius:6px">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Score Trend</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+trendItems+'</div>'
+        +'</div>';
+    }
+
+    var detailHtml='<div id="dim-detail-'+d.dim.id+'" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase">What this dimension covers</div>'
+      +'<div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:12px;padding:10px 12px;background:'+clr+'18;border-radius:6px;border-left:3px solid '+clr+'">'+(whatToFix[d.dim.id]||d.dim.desc)+'</div>'
+      +excHtml+passHtml+naHtml+trendHtml
+      +'</div>';
+
+    var card=document.createElement('div');
+    card.id='dim-card-'+d.dim.id;
+    card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-left:4px solid '+clr+';border-radius:8px;padding:14px 16px;cursor:pointer;transition:box-shadow .2s';
+    card.onmouseenter=function(){this.style.boxShadow='0 4px 16px rgba(0,0,0,0.08)';};
+    card.onmouseleave=function(){this.style.boxShadow='';};
+    card.onclick=function(){_toggleDimCard(d.dim.id);};
+    card.innerHTML=''
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:8px">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--t1)">'+esc(d.dim.label)+'</div>'
+            +'<div id="dim-chevron-'+d.dim.id+'" style="font-size:11px;color:var(--t3);transition:transform .2s">▸</div>'
+          +'</div>'
+          +'<div style="font-size:10px;color:var(--t3);margin-top:2px">'+esc(d.dim.desc)+'</div>'
+        +'</div>'
+        +'<div style="text-align:right;flex-shrink:0;margin-left:16px">'
+          +'<div style="font-size:26px;font-weight:800;color:'+clr+';font-variant-numeric:tabular-nums;line-height:1">'+(sc!==null?sc+'%':'—')+'</div>'
+          +'<div style="font-size:11px;color:'+trendClr+';font-weight:700;margin-top:2px">'+trendDir+' '+(trendDir!=='—'?(Math.abs((trend[trend.length-1]?trend[trend.length-1].score:0)-(trend[0]?trend[0].score:0)))+'pts':'')+'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="background:var(--border);border-radius:4px;height:5px">'
+        +'<div style="width:'+bar+'%;background:'+clr+';border-radius:4px;height:5px"></div>'
+      +'</div>'
+      +'<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--t3)">'
+        +'<span>'+d.exc+' exception'+(d.exc!==1?'s':'')+' · '+d.affectedAsgs.length+' of '+totalRuns+' run'+(totalRuns!==1?'s':'')+'</span>'
+        +'<span style="color:'+clr+';font-weight:700">'+label+'</span>'
+      +'</div>'
+      +detailHtml;
+
+    container.appendChild(card);
+  });
 }
 
 function _drawIntelRings(dims){
