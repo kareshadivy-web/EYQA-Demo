@@ -9509,12 +9509,7 @@ function _renderDimCards(dims,rows,asgIds,totalRuns){
     S.intel._dimStore[d.dim.id]={d:d,excRows:excRows,asgIds:asgIds,totalRuns:totalRuns};
 
     var detailHtml='<div id="dim-detail-'+d.dim.id+'" style="display:none;margin-top:16px;border-top:1px solid '+bd+';padding-top:16px">'
-      +'<div id="dim-patterns-'+d.dim.id+'" data-loaded="0">'
-      +'<div style="display:flex;align-items:center;gap:10px;color:var(--t3);font-size:12px;padding:8px 0">'
-      +'<div class="intel-spin" style="width:16px;height:16px;border:2px solid '+bd+';border-top-color:'+clr+';border-radius:50%;animation:spin .8s linear infinite"></div>'
-      +'Analysing observation patterns with AI…'
-      +'</div>'
-      +'</div>'
+      +'<div id="dim-patterns-'+d.dim.id+'" data-loaded="0"></div>'
       +'</div>';
 
     var card=document.createElement('div');
@@ -9579,46 +9574,66 @@ function _toggleDimCard(dimId){
   }
 }
 
-async function _loadDimPatterns(dimId){
+function _loadDimPatterns(dimId){
   const store=S.intel._dimStore&&S.intel._dimStore[dimId];
   const pEl=document.getElementById('dim-patterns-'+dimId);
   if(!store||!pEl) return;
 
-  const obs=store.excRows.map(function(r){return r.observation||r.obs||r.finding||'';}).filter(Boolean);
-
-  if(!obs.length){
-    pEl.innerHTML='<div style="color:var(--t3);font-size:12px;padding:10px 0">No exceptions recorded for this dimension — nothing to analyse.</div>';
+  if(!store.excRows.length){
+    pEl.innerHTML='<div style="color:var(--t3);font-size:12px;padding:10px 0">No exceptions recorded for this dimension.</div>';
     pEl.dataset.loaded='1';
     return;
   }
 
-  const prompt='You are a senior audit QA analyst. Below are '+obs.length+' QA exception observations from '
-    +store.totalRuns+' review cycles under the "'+store.d.dim.label+'" quality dimension.\n\n'
-    +'Identify 3-4 RECURRING THEMES — patterns that appear across multiple findings, not one-off issues.\n\n'
-    +'For each theme return:\n'
-    +'- name: 3-5 word theme title (e.g. "Control Description Completeness")\n'
-    +'- frequency: integer — how many of the observations relate to this theme\n'
-    +'- severity: exactly one of "critical", "elevated", or "watch"\n'
-    +'- insight: ONE sharp sentence (max 20 words) explaining the pattern and its audit risk implication\n'
-    +'- improving: true if the pattern seems to be improving, false if persisting or worsening\n\n'
-    +'Also return:\n'
-    +'- headline: ONE executive sentence (max 25 words) summarising the overall quality risk of this dimension\n\n'
-    +'Return ONLY valid JSON — no markdown, no explanation:\n'
-    +'{"headline":"...","themes":[{"name":"...","frequency":N,"severity":"...","insight":"...","improving":false}]}\n\n'
-    +'Observations:\n'+obs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
+  // ── Local theme extraction — no API needed ────────────────────────────────
+  // Group exceptions by checkpoint, rank by frequency across assignments
+  const cpMap={};
+  store.excRows.forEach(function(r){
+    const cp=CHECKLIST.find(function(c){return c.no===r.cpNo;})||{};
+    if(!cpMap[r.cpNo]) cpMap[r.cpNo]={cp:cp,rows:[],asgIds:[]};
+    cpMap[r.cpNo].rows.push(r);
+    if(!cpMap[r.cpNo].asgIds.includes(r.asgId)) cpMap[r.cpNo].asgIds.push(r.asgId);
+  });
 
-  try{
-    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
-      model:'claude-haiku-4-5-20251001',
-      max_tokens:900,
-      messages:[{role:'user',content:prompt}]
-    });
-    const text=res.content[0].text;
-    const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
-    pEl.innerHTML=_renderPatternCards(json,store.d,store.excRows.length,store.totalRuns);
-  }catch(e){
-    pEl.innerHTML='<div style="color:var(--t3);font-size:12px;padding:10px 0;border-top:1px solid var(--border)">Pattern analysis unavailable — please check your API key is set.</div>';
+  // Sort checkpoints by number of affected assignments (most recurring first)
+  const ranked=Object.values(cpMap).sort(function(a,b){
+    return b.asgIds.length-a.asgIds.length||b.rows.length-a.rows.length;
+  });
+
+  const totalRuns=store.totalRuns;
+  const totalExc=store.excRows.length;
+
+  // Determine severity per theme from spread
+  function themeSeverity(item){
+    const ratio=item.asgIds.length/totalRuns;
+    if(ratio>=0.6||item.rows.length>=3) return 'critical';
+    if(ratio>=0.3||item.rows.length>=2) return 'elevated';
+    return 'watch';
   }
+
+  // Build headline from top theme
+  const top=ranked[0];
+  const headline=top
+    ? top.cp.cp+' is the most recurring gap — appearing in '+top.asgIds.length+' of '+totalRuns+' review'+(totalRuns!==1?'s':'')+' under '+store.d.dim.label+'.'
+    : store.d.dim.label+' shows '+totalExc+' exception'+(totalExc!==1?'s':'')+' across '+totalRuns+' review'+(totalRuns!==1?'s':'')+'.';
+
+  // Build theme objects (up to 4 checkpoints)
+  const themes=ranked.slice(0,4).map(function(item){
+    // Pick the most informative observation snippet (first non-empty, max 120 chars)
+    const sampleObs=(item.rows.map(function(r){return r.observation||r.obs||r.finding||'';}).find(Boolean)||'').trim();
+    const insight=sampleObs.length>130?sampleObs.substring(0,130)+'…':sampleObs;
+    return {
+      name: item.cp.cp||('CP'+String(item.cp.no).padStart(2,'0')),
+      cpNo: item.cp.no,
+      frequency: item.asgIds.length,
+      totalObs: item.rows.length,
+      severity: themeSeverity(item),
+      insight: insight,
+      improving: false  // no trend data at CP level without multi-run granularity
+    };
+  });
+
+  pEl.innerHTML=_renderPatternCards({headline:headline,themes:themes},store.d,totalExc,totalRuns);
   pEl.dataset.loaded='1';
 }
 
@@ -9653,8 +9668,8 @@ function _renderPatternCards(data,d,totalExc,totalRuns){
     +'<div style="font-size:16px;font-weight:800;color:var(--t1);margin-bottom:6px">'+esc(top.name)+'</div>'
     +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:10px">'+esc(top.insight)+'</div>'
     +'<div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--t3)">'
-      +'<span>Found in <strong>'+top.frequency+'</strong> of '+totalExc+' observations</span>'
-      +'<span style="color:'+(top.improving?'#059669':'#DC2626')+';font-weight:700">'+(top.improving?'↑ Improving':'↓ Persisting')+'</span>'
+      +'<span>Recurring in <strong>'+top.frequency+'</strong> of '+totalRuns+' review'+(totalRuns!==1?'s':'')+'</span>'
+      +'<span>· <strong>'+(top.totalObs||top.frequency)+'</strong> total exception'+(((top.totalObs||top.frequency)!==1)?'s':'')+'</span>'
     +'</div>'
     +'</div>';
 
@@ -9669,7 +9684,7 @@ function _renderPatternCards(data,d,totalExc,totalRuns){
         +'</div>'
         +'<div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:5px">'+esc(t.name)+'</div>'
         +'<div style="font-size:11px;color:var(--t2);line-height:1.6;margin-bottom:8px">'+esc(t.insight)+'</div>'
-        +'<div style="font-size:10px;color:var(--t3)"><strong>'+t.frequency+'</strong> obs · <span style="color:'+(t.improving?'#059669':'#DC2626')+';font-weight:700">'+(t.improving?'↑ Improving':'↓ Persisting')+'</span></div>'
+        +'<div style="font-size:10px;color:var(--t3)">Recurring in <strong>'+t.frequency+'</strong> of '+totalRuns+' review'+(totalRuns!==1?'s':'')+'</div>'
         +'</div>';
     });
     h+='</div>';
@@ -9677,8 +9692,7 @@ function _renderPatternCards(data,d,totalExc,totalRuns){
   return h;
 }
 
-async function generateFullPatternMap(dims,rows,asgIds,totalRuns){
-  // Find or create modal overlay
+function generateFullPatternMap(dims,rows,asgIds,totalRuns){
   var modal=document.getElementById('intel-pattern-modal');
   if(!modal){
     modal=document.createElement('div');
@@ -9688,108 +9702,95 @@ async function generateFullPatternMap(dims,rows,asgIds,totalRuns){
     document.body.appendChild(modal);
   }
 
-  const box=document.createElement('div');
-  box.style.cssText='background:var(--bg1,#fff);border-radius:12px;width:100%;max-width:860px;padding:32px;position:relative;margin:auto';
-  box.innerHTML='<button onclick="document.getElementById(\'intel-pattern-modal\').remove()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button>'
-    +'<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">QA Pattern Intelligence</div>'
-    +'<div style="font-size:22px;font-weight:800;color:var(--t1);margin-bottom:20px">Full Pattern Map</div>'
-    +'<div id="pattern-map-body" style="display:flex;flex-direction:column;gap:16px">'
-      +'<div style="display:flex;align-items:center;gap:12px;color:var(--t3);font-size:13px">'
-        +'<div style="width:20px;height:20px;border:2px solid var(--border);border-top-color:#1A2744;border-radius:50%;animation:spin .8s linear infinite"></div>'
-        +'Analysing patterns across all dimensions…'
-      +'</div>'
-    +'</div>';
-  modal.innerHTML='';
-  modal.appendChild(box);
+  const sevClr={critical:'#DC2626',elevated:'#D97706',watch:'#2563EB'};
+  const sevBg={critical:'rgba(220,38,38,0.08)',elevated:'rgba(217,119,6,0.08)',watch:'rgba(37,99,235,0.08)'};
+  const sevLabel={critical:'CRITICAL',elevated:'ELEVATED',watch:'WATCH'};
 
-  // Gather all exception observations with dimension label
-  const allObs=[];
+  // ── Gather all exceptions grouped by checkpoint across all dimensions ──────
+  const cpMap={};
   dims.forEach(function(d){
     rows.forEach(function(r){
       const cp=CHECKLIST.find(function(c){return c.no===r.cpNo;})||{};
       if(d.dim.match(cp)&&r.status==='Exception'){
-        const txt=r.observation||r.obs||r.finding||'';
-        if(txt) allObs.push('['+d.dim.short+'] '+txt);
+        if(!cpMap[r.cpNo]) cpMap[r.cpNo]={cp:cp,dim:d,rows:[],asgIds:[]};
+        cpMap[r.cpNo].rows.push(r);
+        if(!cpMap[r.cpNo].asgIds.includes(r.asgId)) cpMap[r.cpNo].asgIds.push(r.asgId);
       }
     });
   });
 
-  if(!allObs.length){
-    document.getElementById('pattern-map-body').innerHTML='<div style="color:var(--t3);font-size:13px">No exceptions found to analyse.</div>';
+  const ranked=Object.values(cpMap).sort(function(a,b){
+    return b.asgIds.length-a.asgIds.length||b.rows.length-a.rows.length;
+  });
+
+  if(!ranked.length){
+    modal.innerHTML='<div style="background:var(--bg1,#fff);border-radius:12px;max-width:500px;margin:auto;padding:32px;position:relative"><button onclick="document.getElementById(\'intel-pattern-modal\').remove()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button><div style="color:var(--t3);font-size:14px">No exceptions found to map.</div></div>';
     return;
   }
 
-  const prompt='You are a senior audit QA Director reviewing a client\'s quality performance across '
-    +totalRuns+' QA review cycles.\n\n'
-    +'Below are '+allObs.length+' QA exception observations tagged by quality dimension.\n\n'
-    +'Identify 5-7 CROSS-CUTTING THEMES — patterns that represent systemic quality issues, not one-off findings.\n\n'
-    +'For each theme:\n'
-    +'- name: 3-5 word theme title\n'
-    +'- dimension: which quality area it primarily affects (Risk Coverage / Documentation / Test Execution / Sampling / Reporting)\n'
-    +'- frequency: integer count of related observations\n'
-    +'- severity: "critical", "elevated", or "watch"\n'
-    +'- insight: ONE razor-sharp sentence (max 20 words) naming the root cause and risk\n'
-    +'- action: ONE concrete action sentence (max 20 words) for the engagement team\n'
-    +'- improving: true or false\n\n'
-    +'Also:\n'
-    +'- executiveSummary: 2-3 sentence board-level summary of the client\'s quality posture\n'
-    +'- topRisk: the single highest-priority theme name\n\n'
-    +'Return ONLY valid JSON, no markdown:\n'
-    +'{"executiveSummary":"...","topRisk":"...","themes":[...]}\n\n'
-    +'Observations:\n'+allObs.map(function(o,i){return (i+1)+'. '+o;}).join('\n');
-
-  try{
-    const res=await apiFetch('https://api.anthropic.com/v1/messages',{
-      model:'claude-haiku-4-5-20251001',
-      max_tokens:1400,
-      messages:[{role:'user',content:prompt}]
-    });
-    const text=res.content[0].text;
-    const json=JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
-    const themes=json.themes||[];
-    const sevClr={critical:'#DC2626',elevated:'#D97706',watch:'#2563EB'};
-    const sevBg={critical:'rgba(220,38,38,0.08)',elevated:'rgba(217,119,6,0.08)',watch:'rgba(37,99,235,0.08)'};
-    const sevLabel={critical:'CRITICAL',elevated:'ELEVATED',watch:'WATCH'};
-
-    var body=document.getElementById('pattern-map-body');
-    var h='';
-
-    // Executive summary banner
-    if(json.executiveSummary){
-      h+='<div style="padding:20px 24px;background:#1A2744;border-radius:10px;margin-bottom:6px">'
-        +'<div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(255,230,0,0.8);text-transform:uppercase;margin-bottom:8px">Executive Summary</div>'
-        +'<div style="font-size:14px;color:rgba(255,255,255,0.9);line-height:1.7">'+esc(json.executiveSummary)+'</div>'
-        +(json.topRisk?'<div style="margin-top:10px;font-size:11px;color:rgba(255,230,0,0.7)">Top Priority: <strong style="color:#FFE600">'+esc(json.topRisk)+'</strong></div>':'')
-        +'</div>';
-    }
-
-    // Theme grid
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-    themes.forEach(function(t,i){
-      const tc=sevClr[t.severity]||'#D97706';
-      const isTop=t.name===json.topRisk||i===0;
-      h+='<div style="padding:16px 18px;background:'+sevBg[t.severity]+';border:1px solid '+tc+(isTop?'50':'25')+';border-left:'+(isTop?'5':'3')+'px solid '+tc+';border-radius:10px'+(isTop?';grid-column:1/-1':'')+'">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-          +'<div style="display:flex;align-items:center;gap:8px">'
-            +'<span style="font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 8px;border-radius:3px;background:'+tc+';color:#fff">'+(sevLabel[t.severity]||'ELEVATED')+'</span>'
-            +(isTop?'<span style="font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.5px">TOP PRIORITY</span>':'')
-          +'</div>'
-          +'<span style="font-size:9px;padding:1px 7px;border-radius:10px;background:'+tc+'20;color:'+tc+';font-weight:700">'+esc(t.dimension||'')+'</span>'
-        +'</div>'
-        +'<div style="font-size:'+(isTop?'16':'14')+'px;font-weight:800;color:var(--t1);margin-bottom:6px">'+esc(t.name)+'</div>'
-        +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:6px">'+esc(t.insight)+'</div>'
-        +'<div style="font-size:11px;color:var(--t3);background:rgba(0,0,0,0.04);border-radius:5px;padding:7px 10px;margin-bottom:8px;line-height:1.5"><strong>Action:</strong> '+esc(t.action)+'</div>'
-        +'<div style="display:flex;align-items:center;gap:14px;font-size:10px;color:var(--t3)">'
-          +'<span><strong>'+t.frequency+'</strong> observations</span>'
-          +'<span style="color:'+(t.improving?'#059669':'#DC2626')+';font-weight:700">'+(t.improving?'↑ Improving':'↓ Persisting')+'</span>'
-        +'</div>'
-        +'</div>';
-    });
-    h+='</div>';
-    body.innerHTML=h;
-  }catch(err){
-    document.getElementById('pattern-map-body').innerHTML='<div style="color:var(--t3);font-size:13px">Pattern analysis failed — please check your API key.</div>';
+  function sev(item){
+    const r=item.asgIds.length/totalRuns;
+    return r>=0.6||item.rows.length>=3?'critical':r>=0.3||item.rows.length>=2?'elevated':'watch';
   }
+
+  // Build themes (top 6 checkpoints by recurrence)
+  const themes=ranked.slice(0,6).map(function(item){
+    const sample=(item.rows.map(function(r){return r.observation||r.obs||r.finding||'';}).find(Boolean)||'').trim();
+    return {
+      name: item.cp.cp||'CP'+String(item.cp.no).padStart(2,'0'),
+      cpNo: item.cp.no,
+      dimension: item.dim.dim.short,
+      frequency: item.asgIds.length,
+      totalObs: item.rows.length,
+      severity: sev(item),
+      insight: sample.length>140?sample.substring(0,140)+'…':sample,
+      action: 'Review CP'+String(item.cp.no).padStart(2,'0')+' across all engagements and implement targeted coaching.'
+    };
+  });
+
+  const topTheme=themes[0];
+  const totalExcs=rows.filter(function(r){return r.status==='Exception';}).length;
+  const affectedDims=dims.filter(function(d){return d.exc>0;}).length;
+
+  var h='<button onclick="document.getElementById(\'intel-pattern-modal\').remove()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--t3)">✕</button>'
+    +'<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">QA Pattern Intelligence</div>'
+    +'<div style="font-size:22px;font-weight:800;color:var(--t1);margin-bottom:20px">Full Pattern Map</div>'
+    // Executive banner
+    +'<div style="padding:20px 24px;background:#1A2744;border-radius:10px;margin-bottom:20px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(255,230,0,0.8);text-transform:uppercase;margin-bottom:8px">Quality Posture Summary</div>'
+      +'<div style="font-size:14px;color:rgba(255,255,255,0.9);line-height:1.7">'
+        +totalExcs+' exceptions identified across '+totalRuns+' review'+(totalRuns!==1?'s':'')+', affecting '+affectedDims+' of 5 quality dimensions. '
+        +(topTheme?'"'+topTheme.name+'" is the most systemic gap — recurring in '+topTheme.frequency+' of '+totalRuns+' review'+(totalRuns!==1?'s':'')+'.'  :'')
+      +'</div>'
+      +(topTheme?'<div style="margin-top:10px;font-size:11px;color:rgba(255,230,0,0.7)">Top Priority: <strong style="color:#FFE600">'+esc(topTheme.name)+'</strong></div>':'')
+    +'</div>'
+    // Theme grid
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+
+  themes.forEach(function(t,i){
+    const tc=sevClr[t.severity]||'#D97706';
+    const isTop=i===0;
+    h+='<div style="padding:16px 18px;background:'+sevBg[t.severity]+';border:1px solid '+tc+(isTop?'50':'25')+';border-left:'+(isTop?'5':'3')+'px solid '+tc+';border-radius:10px'+(isTop?';grid-column:1/-1':'')+'">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 8px;border-radius:3px;background:'+tc+';color:#fff">'+(sevLabel[t.severity]||'ELEVATED')+'</span>'
+          +(isTop?'<span style="font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.5px">TOP PRIORITY</span>':'')
+        +'</div>'
+        +'<span style="font-size:9px;padding:1px 7px;border-radius:10px;background:'+tc+'20;color:'+tc+';font-weight:700">'+esc(t.dimension)+'</span>'
+      +'</div>'
+      +'<div style="font-size:'+(isTop?'16':'14')+'px;font-weight:800;color:var(--t1);margin-bottom:6px">'+esc(t.name)+'</div>'
+      +'<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:8px">'+esc(t.insight)+'</div>'
+      +'<div style="font-size:11px;color:var(--t3);background:rgba(0,0,0,0.04);border-radius:5px;padding:7px 10px;margin-bottom:8px;line-height:1.5"><strong>Action:</strong> '+esc(t.action)+'</div>'
+      +'<div style="font-size:10px;color:var(--t3)">Recurring in <strong>'+t.frequency+'</strong> of '+totalRuns+' review'+(totalRuns!==1?'s':'')+' · <strong>'+t.totalObs+'</strong> total exception'+(t.totalObs!==1?'s':'')+'</div>'
+      +'</div>';
+  });
+  h+='</div>';
+
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--bg1,#fff);border-radius:12px;width:100%;max-width:860px;padding:32px;position:relative;margin:auto';
+  box.innerHTML=h;
+  modal.innerHTML='';
+  modal.appendChild(box);
 }
 
 function _drawIntelRings(dims){
