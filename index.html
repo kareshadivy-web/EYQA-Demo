@@ -5042,7 +5042,7 @@ Return the JSON assessment now.`;
     // ── Identical API call pattern to runQAEngine ──────────────────────
     const response = await apiFetch('https://api.anthropic.com/v1/messages', {
       model:      'claude-sonnet-4-6',
-      max_tokens: cpNo === 32 ? 8000 : 2000,
+      max_tokens: cpNo === 32 ? 64000 : 2000,
       system:     systemPrompt,
       messages:   [{ role:'user', content: userMsg }]
     });
