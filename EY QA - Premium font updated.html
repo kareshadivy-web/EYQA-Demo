@@ -6599,7 +6599,7 @@ ${needsReupload>0?`
           <td>${phaseTag(cp.phase)}</td>
           <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
           <td style="font-size:13px;color:var(--t1)">
-            <div>${esc(f.finding)}${sourceTag}</div>
+            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
           </td>
           <td>${statusBadge(f.status, f.finding, f.cpNo)}</td>
           <td style="font-size:11px;color:var(--t2);max-width:150px;white-space:normal;line-height:1.4">${esc(f.evidence||'—')}</td>
@@ -6632,7 +6632,7 @@ ${needsReupload>0?`
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Finding</div>
-                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${esc(f.finding)}</div>
+                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
                 </div>
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -8223,7 +8223,7 @@ function openViewer(asgId,cpNo){
   const sLabel=s==='Pass'?'✓ Pass':s==='Exception'?'⚠ Exception':'⤴ Manual Review';
   const _sb=document.getElementById('vwr-status-badge'); if(_sb) _sb.innerHTML=`<span class="badge ${s==='Pass'?'badge-green':s==='Exception'?'badge-red':'badge-amber'}" style="font-size:13px;padding:6px 14px">${sLabel}</span>`;
   const _cp=document.getElementById('vwr-cp'); if(_cp) _cp.innerHTML=`<strong>CP${cpNo}</strong> — ${esc(cp.cp)}`;
-  const _fi=document.getElementById('vwr-finding'); if(_fi) _fi.textContent=f.finding;
+  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
   const _ev=document.getElementById('vwr-evidence'); if(_ev) _ev.textContent=f.evidence;
   const _re=document.getElementById('vwr-rec'); if(_re) _re.textContent=f.rec||'No recommendation.';
   const _doc=document.getElementById('vwr-doc'); if(_doc) _doc.innerHTML=buildDocContent(f,cp);
@@ -8918,7 +8918,7 @@ function setFindingsFilter(tab){
       <td>${phaseTag(cp.phase)}</td>
       <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
       <td style="font-size:12px;color:var(--t1)">
-        ${esc(f.finding)}
+        ${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}
         ${hasSub?`<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
           ${subExc>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(204,34,0,0.10);color:#CC2200">✕ ${subExc} Exc</span>`:''}
           ${subMR>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(217,119,6,0.10);color:#D97706">◑ ${subMR} Review</span>`:''}
@@ -8956,7 +8956,7 @@ function setFindingsFilter(tab){
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Summary Finding</div>
-              <div style="font-size:13px;color:var(--t1);line-height:1.5;text-align:justify">${esc(f.finding)}</div>
+              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
             </div>
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -9823,6 +9823,75 @@ function generateFullPatternMap(dims,rows,asgIds,totalRuns){
   box.innerHTML=h;
   modal.innerHTML='';
   modal.appendChild(box);
+}
+
+function _parseCP30(text){
+  const result={intro:'',findings:[],peerReview:null};
+  if(!text) return result;
+  const introEnd=text.search(/\(\d+\)\s+'[^']+'/);
+  if(introEnd>0) result.intro=text.substring(0,introEnd).trim();
+  const blocks=text.split(/(?=\(\d+\)\s+)/);
+  blocks.forEach(function(block){
+    if(!block.trim()) return;
+    const nameMatch=block.match(/\(\d+\)\s+'([^']+)'/);
+    if(!nameMatch){
+      if(block.match(/IIA Standard|peer review|rating challenge|independent rating|No documentation/i))
+        result.peerReview=block.replace(/^\(\d+\)\s*/,'').trim();
+      return;
+    }
+    const currentMatch=block.match(/\(rated\s+([^)]+)\)/i);
+    const reRatingMatch=block.match(/Recommended re-rating:\s*([A-Za-z ]+?)(?:\.|,|$)/im);
+    const testsMatch=[...block.matchAll(/Test\s+(\d+)\s+[—–-]/gi)].map(function(m){return parseInt(m[1]);});
+    result.findings.push({
+      name:nameMatch[1],
+      current:currentMatch?currentMatch[1].trim():'Medium',
+      recommended:reRatingMatch?reRatingMatch[1].trim():'High',
+      testsFailed:testsMatch,
+      fullText:block
+    });
+  });
+  return result;
+}
+
+function _renderCP30Finding(text,compact){
+  if(!text||text==='—') return compact?esc(text||'—'):'<span style="color:var(--t3)">—</span>';
+  const parsed=_parseCP30(text);
+  const ratingColors={'High':'#EF4444','Critical':'#7F1D1D','Medium':'#F59E0B','Low':'#10B981','Improvement Recommended':'#6366F1'};
+  if(compact){
+    const underRated=parsed.findings.filter(function(f){return f.recommended&&f.recommended!==f.current;}).length;
+    let h='';
+    if(underRated) h+='<span style="display:inline-block;margin-right:6px;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,0.12);color:#EF4444;font-weight:700">⚠ '+underRated+' finding'+(underRated>1?'s':'')+' under-rated</span>';
+    if(parsed.peerReview) h+='<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,0.12);color:#B45309;font-weight:700">No peer review</span>';
+    return h||esc(text.substring(0,120))+(text.length>120?'…':'');
+  }
+  let h='';
+  if(parsed.intro) h+='<div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.5;padding:10px 12px;background:rgba(239,68,68,0.05);border-radius:6px;border-left:3px solid #EF4444">'+esc(parsed.intro)+'</div>';
+  parsed.findings.forEach(function(f){
+    const curClr=ratingColors[f.current]||'#9CA3AF';
+    const recClr=ratingColors[f.recommended]||'#EF4444';
+    const badges=[1,2,3,4].map(function(n){
+      const failed=f.testsFailed.includes(n);
+      return '<span style="font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700;background:'+(failed?'rgba(239,68,68,0.12)':'rgba(0,0,0,0.04)')+';color:'+(failed?'#EF4444':'var(--t3)')+'">Test '+n+' '+(failed?'✗':'✓')+'</span>';
+    }).join('');
+    h+='<div style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid '+recClr+';border-radius:8px;padding:14px 16px;margin-bottom:10px">'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">'
+        +'<div style="font-size:12px;font-weight:700;color:var(--t1);line-height:1.4;flex:1">'+esc(f.name)+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
+          +'<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+curClr+'22;color:'+curClr+';font-weight:700;opacity:.7;text-decoration:line-through">'+esc(f.current)+'</span>'
+          +'<span style="font-size:12px;color:var(--t3)">→</span>'
+          +'<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+recClr+'22;color:'+recClr+';font-weight:700">'+esc(f.recommended)+'</span>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:5px;flex-wrap:wrap">'+badges+'</div>'
+    +'</div>';
+  });
+  if(parsed.peerReview){
+    h+='<div style="border:1px solid rgba(245,158,11,0.4);border-radius:8px;padding:12px 14px;margin-top:4px;background:rgba(245,158,11,0.05)">'
+      +'<div style="font-size:11px;font-weight:700;color:#B45309;margin-bottom:4px">⚠ Independent Rating Challenge — Absent</div>'
+      +'<div style="font-size:11px;color:var(--t2);line-height:1.5">'+esc(parsed.peerReview.substring(0,250))+'</div>'
+    +'</div>';
+  }
+  return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
 }
 
 function _drawIntelRings(dims){
