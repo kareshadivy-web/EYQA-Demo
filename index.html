@@ -5042,7 +5042,7 @@ Return the JSON assessment now.`;
     // ── Identical API call pattern to runQAEngine ──────────────────────
     const response = await apiFetch('https://api.anthropic.com/v1/messages', {
       model:      'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: cpNo === 32 ? 8000 : 2000,
       system:     systemPrompt,
       messages:   [{ role:'user', content: userMsg }]
     });
@@ -5060,7 +5060,14 @@ Return the JSON assessment now.`;
       const clean = rawText.replace(/```json|```/g,'').trim();
       parsed = JSON.parse(clean);
     } catch(e){
-      parsed = { status:'Manual Review', finding:'AI returned an unparseable response — please re-run.', evidence:'', rec:'' };
+      // Try to extract JSON object from response text
+      try {
+        const m = rawText.match(/\{[\s\S]*"status"[\s\S]*\}/);
+        if(m) parsed = JSON.parse(m[0]);
+        else throw new Error('no json');
+      } catch(e2){
+        parsed = { status:'Manual Review', finding:'AI returned an unparseable response — please re-run.', evidence:'', rec:'' };
+      }
     }
 
     if(!S.wiz.cpResults) S.wiz.cpResults = {};
