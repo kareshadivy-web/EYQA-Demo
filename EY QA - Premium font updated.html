@@ -9918,10 +9918,7 @@ function _parseCP32(text){
   const tblStart=text.search(/Policy.?ID|Three.?Way|POLICY/i);
   if(tblStart>0) result.intro=text.substring(0,tblStart).trim();
   // Parse table rows: look for pattern like TP001 ... 
-  const rowRe=/(TP\d{3})[^
-]*?(\d{3,5})\s*CC[^
-]*?(\d{3,5})\s*CC[^
-]*/gi;
+  const rowRe=/(TP\d{3})[^\r\n]*/gi;
   let m;
   while((m=rowRe.exec(text))!==null){
     result.rows.push({raw:m[0],policyId:m[1]});
@@ -9966,17 +9963,7 @@ function _renderCP32Finding(text,compact){
     h+='</div>';
   }
   // Three-way variance table (parse policy rows from text)
-  const tableRe=/\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|([^|
-]+)\|/g;
+  const tableRe=/\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|/g;
   const tableRows=[];
   let tm;
   while((tm=tableRe.exec(text))!==null){
