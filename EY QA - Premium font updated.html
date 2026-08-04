@@ -8038,7 +8038,7 @@ async function parseFile(file, onProgress){
       wb.SheetNames.forEach(n=>{
         out._sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});
       });
-      out._text = wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
+      out._text = wb.SheetNames.map(n=>`=== Sheet: ${n} ===\n${XLSX.utils.sheet_to_csv(wb.Sheets[n])}`).join('\n\n');
       if(!out._text.trim()){
         return {_text:`[${file.name} — spreadsheet opened but all cells appear empty]`, _unreadable:true, _reason:'xlsx-empty'};
       }
@@ -8493,7 +8493,7 @@ async function parseDocLibFile(file){
     wb.SheetNames.forEach(n => {
       out._sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:'',raw:false});
     });
-    out._text = wb.SheetNames.map(n => XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
+    out._text = wb.SheetNames.map(n => `=== Sheet: ${n} ===\n${XLSX.utils.sheet_to_csv(wb.Sheets[n])}`).join('\n\n');
     } catch(e){
       out._text = '[' + file.name + ' — could not read spreadsheet: ' + e.message + '. Try re-saving as .xlsx from Excel.]';
     }
