@@ -1831,8 +1831,8 @@ a { color: inherit; text-decoration: none; }
         <div class="cl-choice active" id="cl-default" onclick="selectCL('default')">
           <div class="cl-choice-eyebrow">Recommended</div>
           <div class="cl-choice-title">Standard Library</div>
-          <div class="cl-choice-sub">30 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
-          <div class="cl-choice-count" id="cl-default-count">30 checkpoints loaded</div>
+          <div class="cl-choice-sub">31 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
+          <div class="cl-choice-count" id="cl-default-count">31 checkpoints loaded</div>
         </div>
         <div class="cl-choice" id="cl-custom" onclick="selectCL('custom')">
           <div class="cl-choice-eyebrow">Custom</div>
@@ -2179,7 +2179,7 @@ a { color: inherit; text-decoration: none; }
 "use strict";
 
 /* ============================================================
-   DATA — Checklist (30 checkpoints)
+   DATA — Checklist (31 checkpoints)
    ============================================================ */
 let CHECKLIST = [
   { no:1,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Flag missing rationale for scope exclusions / de-scoped controls',                                         docs:'APM' },
@@ -2225,6 +2225,8 @@ let CHECKLIST = [
   { no:29, phase:'Reporting', act:'Executive Summary',                   cp:'Assess quality of Executive Summary and inclusion of all critical issues',                               docs:'Executive Reports' },
   { no:30, phase:'Reporting', act:'Observation Rating Challenge',         cp:'Check the appropriateness of audit observation ratings',                                                    docs:'Audit Report',
     instructions:'For each finding in the audit report, assess whether the assigned rating (Critical / High / Medium / Low / Improvement Recommended) is appropriate. Apply the following four tests: (1) Regulatory / statutory breach — any obligation under CCA, FCA, Consumer Duty, or prudential regulation at material risk elevates the finding to at least Medium; systemic breach or evidence of actual instances elevates to High. (2) Customer outcome impact — evidence of direct financial or welfare harm to customers elevates to at least Medium; systemic or widespread impact elevates to High. (3) Root cause depth — a failure in process design or governance is inherently more severe than a one-off control lapse and should be rated accordingly. (4) Recurrence — if a similar finding appeared in the prior year engagement, the current year rating should reflect escalation. Also check: if two separately-rated findings share the same root cause or compound to a greater combined risk, flag whether that combined risk has been acknowledged and rated. Flag as Exception if: any finding appears under-rated against two or more of the above tests; or no evidence of independent rating challenge or peer review is documented in the audit workpapers.' },
+  { no:32, phase:'Fieldwork', act:'Premium Recomputation Testing',         cp:'Independently recompute TP premiums against approved tariff rates and reconcile with premium register and auditor workpapers',     docs:'Premium Recalculation',
+    instructions:'You are performing QA on a Third-Party (TP) motor insurance premium recomputation audit. The uploaded workbook contains multiple sheets — read ALL sheets before drawing conclusions. Perform the following seven checks:\n\n(1) TARIFF VALIDATION — From the Tariff_Master sheet, extract all tariff bands (vehicle type + CC range → premium). Confirm that tariff rates are internally consistent and cover all vehicle categories present in the Premium_Register.\n\n(2) SOURCE DATA INTEGRITY — From Client_Source_Data sheet, record the Engine_CC and Vehicle_Type for each Policy_ID. From Premium_Register sheet, record the Engine_CC and Registered_Premium for the same Policy_IDs. Compare: flag any policy where Engine_CC differs between Client_Source_Data and Premium_Register as a Source vs Register Mismatch (Data Exception).\n\n(3) INDEPENDENT RECOMPUTATION — For each policy in Premium_Register, apply the correct tariff band from Tariff_Master using the Client_Source_Data Engine_CC and Vehicle_Type. This is your AI-recomputed premium. Record it for every policy.\n\n(4) AUDITOR WORKPAPER REVIEW — From Auditor_Recomputation sheet, extract the Auditor_Recomputed_Premium for each Policy_ID. Compare the Auditor_Recomputed_Premium against your AI-recomputed premium. Flag any discrepancy as an Auditor Computation Error.\n\n(5) REGISTER ACCURACY — Compare Registered_Premium (Premium_Register) against your AI-recomputed premium. Flag any policy where Registered_Premium ≠ AI-recomputed premium as a Premium Register Error.\n\n(6) THREE-WAY VARIANCE TABLE — Produce a summary table with columns: Policy_ID | Vehicle_Type | CC_Source | CC_Register | AI_Recomputed_Premium | Auditor_Recomputed_Premium | Registered_Premium | Variance_AI_vs_Register | Variance_AI_vs_Auditor | Exception_Type. Populate for every policy sampled (or all policies if fewer than 30).\n\n(7) DOCUMENTATION COMPLETENESS — From Work_Done sheet, check: (a) Is a workpaper present for every sampled policy? (b) Does each workpaper have a reviewer sign-off? Flag any missing workpaper or unsigned review as a Documentation Gap.\n\nRating: Flag as Exception if any of the following: (i) ≥1 Source vs Register mismatch; (ii) ≥1 Auditor Computation Error; (iii) ≥1 Premium Register Error; (iv) ≥1 missing workpaper or unsigned review. Report all findings with policy-level detail.' },
 ];
 
 /* ============================================================
@@ -2400,6 +2402,12 @@ const CANONICAL_FINDINGS = [
     finding:'Two findings appear under-rated. Finding 1 (Pancredit payment arrangements) rated Medium — 136 of 1,247 arrangements (10.9%) made outside authority matrix; actual instances, not design gap. Finding 2 (Customer notice tracking) rated Medium — CCA 1974 statutory obligations (14-day default notice, 6-month SNOSIA) at risk with no dispatch evidence; statutory breach warrants High. Finding 6 (Complaints management) rated Low despite audits for April, July and August all conducted in October — 3–6 month delay in a regulated environment warrants Medium. Findings 1 and 7 also share the same root cause and compound to a higher combined risk not acknowledged in the report. No evidence of independent rating challenge or peer review documented in workpapers.',
     evidence:'Arrears_Mgmt_Final_Audit_Report.pdf — 7 findings reviewed; Findings 1, 2 and 6 under-rated; compounding risk between Findings 1 and 7 unacknowledged', srcDoc:'Arrears_Mgmt_Final_Audit_Report.pdf',
     rec:'Re-assess ratings for Findings 1, 2 and 6 with documented rationale. Acknowledge compounding risk between Findings 1 and 7 in the Executive Summary. Introduce a mandatory independent rating challenge step (peer review sign-off) in the QA process before report issue.' },
+
+  { cpNo:32, status:'Manual Review',
+    finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Arrears Management audit covers consumer credit collections and forbearance processes — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
+    evidence:'Engagement type: Internal Audit Review — Arrears Management (consumer credit). No premium or tariff data available.',
+    srcDoc:'APM.pdf',
+    rec:'This checkpoint applies to General Insurance TP premium audits only. No action required for this engagement.' },
 ];
 
 /* ============================================================
@@ -2434,6 +2442,11 @@ const CLAIMS_FINDINGS = [
   { cpNo:27, status:'Pass',          finding:'Agreed completion dates documented for all 5 actionable findings.', evidence:'Claims_Final_Audit_Report.pdf — 5 completion dates confirmed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
   { cpNo:29, status:'Pass',          finding:'Executive Summary covers all Medium and High rated findings with clear risk articulation.', evidence:'Claims_Final_Audit_Report.pdf — Executive Summary reviewed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
   { cpNo:30, status:'Pass',          finding:'All 5 finding ratings reviewed and assessed as appropriate. High-rated findings (duplicate payment and fraud exposure) substantiated by actual instances and regulatory obligation. Medium ratings supported by documented root cause depth. Independent rating challenge documented via peer review sign-off dated 10 Jun 2026.', evidence:'Claims_Final_Audit_Report.pdf — 5 findings, rating rationale and peer review sign-off confirmed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
+  { cpNo:32, status:'Manual Review',
+    finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Claims V21 audit covers claims processing operations — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
+    evidence:'Engagement type: Internal Audit Review — Claims Processing V21. No premium or tariff data available.',
+    srcDoc:'Claims_APM_V21.docx',
+    rec:'This checkpoint applies to General Insurance TP premium audits only. No action required for this engagement.' },
 ];
 
 const FINDINGS = {
@@ -3090,6 +3103,7 @@ const FILENAME_TO_DOCTYPE = [
   { keys:['sampling_matrix','sampling matrix','sampling','sample matrix'],         type:'Sampling Matrix' },
   { keys:['audit_report','audit report','auditreport','final_report','final report','arrears_mgmt_final','assurance report'], type:'Audit Report' },
   { keys:['workpaper','work paper','work_paper','working paper'],                  type:'Workpapers' },
+  { keys:['premium recalculation','premium_recalculation','tariff master','premium recomp','premium register','tp premium'], type:'Premium Recalculation' },
 ];
 
 function inferDocType(filename){
@@ -3164,6 +3178,8 @@ const CP_REQUIRED_DOCS = {
   27: ['Audit Report'],
   28: ['Audit Report'],
   29: ['Audit Report'],
+  30: ['Audit Report'],
+  32: ['Premium Recalculation'],
 };
 
 /* ============================================================
@@ -3592,7 +3608,7 @@ const WIZ_DOC_TYPES = [
   'Annual Audit Plan','APM','RCM','Risk Register',
   'Workpapers','Evidence','Audit Reports',
   'Executive Reports','Prior Year Audit Report / Issues','Sampling Matrix',
-  'Walkthrough Document','Opening MoM'
+  'Walkthrough Document','Opening MoM','Premium Recalculation'
 ];
 
 function renderWizRefDocs(){
@@ -6599,7 +6615,7 @@ ${needsReupload>0?`
           <td>${phaseTag(cp.phase)}</td>
           <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
           <td style="font-size:13px;color:var(--t1)">
-            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
+            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):f.cpNo===32?_renderCP32Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
           </td>
           <td>${statusBadge(f.status, f.finding, f.cpNo)}</td>
           <td style="font-size:11px;color:var(--t2);max-width:150px;white-space:normal;line-height:1.4">${esc(f.evidence||'—')}</td>
@@ -6632,7 +6648,7 @@ ${needsReupload>0?`
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Finding</div>
-                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
+                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):f.cpNo===32?_renderCP32Finding(f.finding,false):esc(f.finding)}</div>
                 </div>
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -8223,7 +8239,7 @@ function openViewer(asgId,cpNo){
   const sLabel=s==='Pass'?'✓ Pass':s==='Exception'?'⚠ Exception':'⤴ Manual Review';
   const _sb=document.getElementById('vwr-status-badge'); if(_sb) _sb.innerHTML=`<span class="badge ${s==='Pass'?'badge-green':s==='Exception'?'badge-red':'badge-amber'}" style="font-size:13px;padding:6px 14px">${sLabel}</span>`;
   const _cp=document.getElementById('vwr-cp'); if(_cp) _cp.innerHTML=`<strong>CP${cpNo}</strong> — ${esc(cp.cp)}`;
-  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
+  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else if(f.cpNo===32){_fi.innerHTML=_renderCP32Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
   const _ev=document.getElementById('vwr-evidence'); if(_ev) _ev.textContent=f.evidence;
   const _re=document.getElementById('vwr-rec'); if(_re) _re.textContent=f.rec||'No recommendation.';
   const _doc=document.getElementById('vwr-doc'); if(_doc) _doc.innerHTML=buildDocContent(f,cp);
@@ -8918,7 +8934,7 @@ function setFindingsFilter(tab){
       <td>${phaseTag(cp.phase)}</td>
       <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
       <td style="font-size:12px;color:var(--t1)">
-        ${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}
+        ${f.cpNo===30?_renderCP30Finding(f.finding,true):f.cpNo===32?_renderCP32Finding(f.finding,true):esc(f.finding)}
         ${hasSub?`<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
           ${subExc>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(204,34,0,0.10);color:#CC2200">✕ ${subExc} Exc</span>`:''}
           ${subMR>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(217,119,6,0.10);color:#D97706">◑ ${subMR} Review</span>`:''}
@@ -8956,7 +8972,7 @@ function setFindingsFilter(tab){
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Summary Finding</div>
-              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
+              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):f.cpNo===32?_renderCP32Finding(f.finding,false):esc(f.finding)}</div>
             </div>
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -9890,6 +9906,115 @@ function _renderCP30Finding(text,compact){
       +'<div style="font-size:11px;font-weight:700;color:#B45309;margin-bottom:4px">⚠ Independent Rating Challenge — Absent</div>'
       +'<div style="font-size:11px;color:var(--t2);line-height:1.5">'+esc(parsed.peerReview.substring(0,250))+'</div>'
     +'</div>';
+  }
+  return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
+}
+
+
+function _parseCP32(text){
+  const result={intro:'',rows:[],docGaps:[],summary:null};
+  if(!text) return result;
+  // Extract intro paragraph (before table)
+  const tblStart=text.search(/Policy.?ID|Three.?Way|POLICY/i);
+  if(tblStart>0) result.intro=text.substring(0,tblStart).trim();
+  // Parse table rows: look for pattern like TP001 ... 
+  const rowRe=/(TP\d{3})[^
+]*?(\d{3,5})\s*CC[^
+]*?(\d{3,5})\s*CC[^
+]*/gi;
+  let m;
+  while((m=rowRe.exec(text))!==null){
+    result.rows.push({raw:m[0],policyId:m[1]});
+  }
+  // Look for exception type tags
+  const excTypes=[];
+  if(/Source vs Register Mismatch|data exception/i.test(text)) excTypes.push('Mismatch');
+  if(/Auditor Computation Error|auditor error/i.test(text)) excTypes.push('Auditor Error');
+  if(/Premium Register Error|register error/i.test(text)) excTypes.push('Register Error');
+  if(/Documentation Gap|missing workpaper|unsigned review/i.test(text)) excTypes.push('Doc Gap');
+  result.excTypes=excTypes;
+  // Count policies flagged
+  const policyMatches=[...text.matchAll(/TP\d{3}/g)];
+  const uniquePolicies=new Set(policyMatches.map(function(mm){return mm[0];}));
+  result.policiesScanned=uniquePolicies.size;
+  result.policiesFlagged=[...text.matchAll(/Exception|Mismatch|Error|Gap/gi)].length;
+  return result;
+}
+
+function _renderCP32Finding(text,compact){
+  if(!text||text==='—') return compact?esc(text||'—'):'<span style="color:var(--t3)">—</span>';
+  const parsed=_parseCP32(text);
+  const excColors={Mismatch:'#EF4444','Auditor Error':'#F59E0B','Register Error':'#EF4444','Doc Gap':'#6366F1'};
+  if(compact){
+    if(!parsed.excTypes||!parsed.excTypes.length) return '<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:700">✓ All premiums verified</span>';
+    const badges=parsed.excTypes.map(function(et){
+      const clr=excColors[et]||'#EF4444';
+      return '<span style="display:inline-block;margin-right:4px;font-size:10px;padding:2px 8px;border-radius:10px;background:'+clr+'1a;color:'+clr+';font-weight:700">⚠ '+et+'</span>';
+    }).join('');
+    return badges;
+  }
+  // Full render
+  let h='';
+  if(parsed.intro) h+='<div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.5;padding:10px 12px;background:rgba(99,102,241,0.05);border-radius:6px;border-left:3px solid #6366F1">'+esc(parsed.intro)+'</div>';
+  // Exception type badges
+  if(parsed.excTypes&&parsed.excTypes.length){
+    h+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">';
+    parsed.excTypes.forEach(function(et){
+      const clr=excColors[et]||'#EF4444';
+      h+='<span style="font-size:11px;padding:4px 12px;border-radius:10px;background:'+clr+'1a;color:'+clr+';font-weight:700;border:1px solid '+clr+'44">⚠ '+et+'</span>';
+    });
+    h+='</div>';
+  }
+  // Three-way variance table (parse policy rows from text)
+  const tableRe=/\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|([^|
+]+)\|/g;
+  const tableRows=[];
+  let tm;
+  while((tm=tableRe.exec(text))!==null){
+    const cols=Array.from({length:10},function(_,i){return tm[i+1]?tm[i+1].trim():'';});
+    if(cols[0].match(/^-+$|^Policy.?ID/i)) continue;
+    if(cols[0].match(/TP\d{3}/i)) tableRows.push(cols);
+  }
+  if(tableRows.length){
+    h+='<div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:11px">'
+      +'<thead><tr style="background:var(--bg2)">'
+      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Policy</th>'
+      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Type</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">CC (Src)</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">CC (Reg)</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">AI Premium</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Auditor Premium</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Register Premium</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Var (AI vs Reg)</th>'
+      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Var (AI vs Aud)</th>'
+      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Exception</th>'
+      +'</tr></thead><tbody>';
+    tableRows.forEach(function(r,ri){
+      const hasExc=r[9]&&r[9]!=='-'&&r[9].trim()!=='None'&&r[9].trim()!=='';
+      const bg=ri%2===0?'var(--bg2)':'var(--bg3)';
+      const excClr=hasExc?'#EF4444':'#10B981';
+      h+='<tr style="background:'+bg+'">';
+      r.forEach(function(cell,ci){
+        const align=ci>=2&&ci<=8?'right':'left';
+        const fw=ci===0||ci===9?'700':'400';
+        const clr=ci===9?(hasExc?'#EF4444':'#10B981'):'var(--t1)';
+        h+='<td style="padding:6px 10px;text-align:'+align+';font-weight:'+fw+';color:'+clr+';border-bottom:1px solid var(--border);white-space:nowrap">'+esc(cell)+'</td>';
+      });
+      h+='</tr>';
+    });
+    h+='</tbody></table></div>';
+  } else {
+    // Fallback: render as formatted text
+    h+='<div style="font-size:12px;color:var(--t1);line-height:1.7;white-space:pre-wrap">'+esc(text)+'</div>';
   }
   return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
 }
