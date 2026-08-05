@@ -1831,8 +1831,8 @@ a { color: inherit; text-decoration: none; }
         <div class="cl-choice active" id="cl-default" onclick="selectCL('default')">
           <div class="cl-choice-eyebrow">Recommended</div>
           <div class="cl-choice-title">Standard Library</div>
-          <div class="cl-choice-sub">32 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
-          <div class="cl-choice-count" id="cl-default-count">32 checkpoints loaded</div>
+          <div class="cl-choice-sub">31 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
+          <div class="cl-choice-count" id="cl-default-count">31 checkpoints loaded</div>
         </div>
         <div class="cl-choice" id="cl-custom" onclick="selectCL('custom')">
           <div class="cl-choice-eyebrow">Custom</div>
@@ -2179,7 +2179,7 @@ a { color: inherit; text-decoration: none; }
 "use strict";
 
 /* ============================================================
-   DATA — Checklist (32 checkpoints)
+   DATA — Checklist (31 checkpoints)
    ============================================================ */
 let CHECKLIST = [
   { no:1,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Flag missing rationale for scope exclusions / de-scoped controls',                                         docs:'APM' },
@@ -2228,8 +2228,6 @@ let CHECKLIST = [
 
   { no:31, phase:'Fieldwork', act:'Documentation and Review',            cp:'Validate that all planned test procedures in workpaper lead sheets are fully evidenced in the work performed — flag any step planned but absent from execution',                                              docs:'Workpapers',
     instructions:'For each uploaded workpaper, perform the following step-by-step comparison and write a concise finding (3-5 sentences max):\n\n(1) LOCATE PROCEDURES — Find the planned test steps. Look for a field or section labelled: Procedures, Test Steps, Work Programme, TOD, TOE, Audit Steps, or Planned Testing. If the workpaper has multiple sheets, check all sheets. If no procedures section is found at all, return status Manual Review with finding explaining the lead sheet could not be located.\n\n(2) LIST PLANNED STEPS — Extract each numbered or lettered step (i, ii, iii or 1, 2, 3) from the procedures section. These are the steps the auditor committed to perform.\n\n(3) CROSS-MATCH AGAINST WORK PERFORMED — Read the Detailed Work Performed field (or equivalent execution section). For each planned step, check: is there a corresponding paragraph or sentence in the work performed that addresses it? Flag any planned step with no matching execution as a Gap.\n\n(4) MANDATORY FIELDS CHECK — Confirm these fields are populated: Sample size, Sampling rationale, Observations, and if an issue was noted — Title, Rating, Root cause, Remediation action, Due date.\n\n(5) SELF-EXCLUSION CHECK — If the auditor excluded part of the planned scope mid-test (e.g. "minutes not in scope", "not obtained"), flag whether this exclusion was documented in the APM or is a self-imposed mid-test scope reduction without prior authorisation.\n\nRating: Exception if ≥1 planned step has no evidence in work performed, or a mandatory field is blank, or an unauthorised mid-test scope reduction is applied. Pass if all steps evidenced and all mandatory fields populated. Manual Review if no procedures section can be located.\n\nKeep finding under 80 words. Name the specific workpaper, the step number(s) that failed, and the nature of the gap.' },
-  { no:32, phase:'Fieldwork', act:'Premium Recomputation Testing',         cp:'Independently recompute TP premiums against approved tariff rates and reconcile with premium register and auditor workpapers',     docs:'Premium Recalculation',
-    instructions:'You are performing QA on a Third-Party (TP) motor insurance premium recomputation audit. The uploaded workbook contains multiple sheets — read ALL sheets before drawing conclusions. Silently perform the following seven checks internally, then write a concise summary finding (3–5 sentences max) covering only the exceptions found:\n\n(1) TARIFF VALIDATION — From Tariff_Master sheet: confirm tariff bands are consistent and cover all vehicle categories in Premium_Register.\n(2) SOURCE DATA INTEGRITY — Compare Engine_CC in Client_Source_Data vs Premium_Register for each Policy_ID. Count policies where CC differs — these are Source vs Register Mismatches.\n(3) INDEPENDENT RECOMPUTATION — Using Client_Source_Data CC and Tariff_Master, compute the correct premium for each policy. This is your AI-recomputed premium.\n(4) AUDITOR COMPUTATION ERRORS — Compare Auditor_Recomputed_Premium (Auditor_Recomputation sheet) against your AI-recomputed premium. Count discrepancies.\n(5) REGISTER ACCURACY — Compare Registered_Premium (Premium_Register) against AI-recomputed premium. Count and sum financial impact of errors.\n(6) THREE-WAY VARIANCE — Identify which policy IDs have mismatches across Source CC, Register CC, AI Premium, Auditor Premium, and Registered Premium. List only exception policy IDs.\n(7) DOCUMENTATION — From Work_Done sheet: count policies missing workpapers or reviewer sign-off.\n\nRating: Exception if any check finds ≥1 issue. Pass only if all seven checks are clean.\n\nFINDING FORMAT: Write 3–5 sentences. State total policies reviewed, how many exceptions found, which policy IDs are affected and why (e.g. CC mismatch, wrong tariff applied, financial variance amount), and any documentation gaps. Do NOT list every policy or produce a table — only state the exceptions. Keep it under 100 words.' },
 ];
 
 /* ============================================================
@@ -2411,12 +2409,6 @@ const CANONICAL_FINDINGS = [
     evidence:'Workpapers__Arrear_C2.xlsx — TOE Sheet, Procedures Step i vs Detailed Work Performed; TOD/TOE Sheet, Procedures Step ii vs Notes',
     srcDoc:'Workpapers__Arrear_C2.xlsx',
     rec:'Obtain and document quorum evidence for sampled CWG/CEWG meetings or update the test procedure to remove quorum as a planned step. Obtain APM sign-off for CEWG minutes exclusion or reinstate CEWG minutes testing.' },
-
-  { cpNo:32, status:'Manual Review',
-    finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Arrears Management audit covers consumer credit collections and forbearance processes — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
-    evidence:'Engagement type: Internal Audit Review — Arrears Management (consumer credit). No premium or tariff data available.',
-    srcDoc:'APM.pdf',
-    rec:'This checkpoint applies to General Insurance TP premium audits only. No action required for this engagement.' },
 ];
 
 /* ============================================================
@@ -2457,11 +2449,6 @@ const CLAIMS_FINDINGS = [
     srcDoc:'Claims_APM_V21.docx',
     rec:'Upload workpaper files to enable CP31 lead sheet verification.' },
 
-  { cpNo:32, status:'Manual Review',
-    finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Claims V21 audit covers claims processing operations — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
-    evidence:'Engagement type: Internal Audit Review — Claims Processing V21. No premium or tariff data available.',
-    srcDoc:'Claims_APM_V21.docx',
-    rec:'This checkpoint applies to General Insurance TP premium audits only. No action required for this engagement.' },
 ];
 
 const FINDINGS = {
@@ -3118,7 +3105,6 @@ const FILENAME_TO_DOCTYPE = [
   { keys:['sampling_matrix','sampling matrix','sampling','sample matrix'],         type:'Sampling Matrix' },
   { keys:['audit_report','audit report','auditreport','final_report','final report','arrears_mgmt_final','assurance report'], type:'Audit Report' },
   { keys:['workpaper','work paper','work_paper','working paper'],                  type:'Workpapers' },
-  { keys:['premium recalculation','premium_recalculation','tariff master','premium recomp','premium register','tp premium'], type:'Premium Recalculation' },
 ];
 
 function inferDocType(filename){
@@ -3195,7 +3181,6 @@ const CP_REQUIRED_DOCS = {
   29: ['Audit Report'],
   30: ['Audit Report'],
   31: ['Workpapers'],
-  32: ['Premium Recalculation'],
 };
 
 /* ============================================================
@@ -3624,7 +3609,7 @@ const WIZ_DOC_TYPES = [
   'Annual Audit Plan','APM','RCM','Risk Register',
   'Workpapers','Evidence','Audit Reports',
   'Executive Reports','Prior Year Audit Report / Issues','Sampling Matrix',
-  'Walkthrough Document','Opening MoM','Premium Recalculation'
+  'Walkthrough Document','Opening MoM'
 ];
 
 function renderWizRefDocs(){
@@ -5058,7 +5043,7 @@ Return the JSON assessment now.`;
     // ── Identical API call pattern to runQAEngine ──────────────────────
     const response = await apiFetch('https://api.anthropic.com/v1/messages', {
       model:      'claude-sonnet-4-6',
-      max_tokens: cpNo === 32 ? 64000 : 2000,
+      max_tokens: 2000,
       system:     systemPrompt,
       messages:   [{ role:'user', content: userMsg }]
     });
@@ -6638,7 +6623,7 @@ ${needsReupload>0?`
           <td>${phaseTag(cp.phase)}</td>
           <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
           <td style="font-size:13px;color:var(--t1)">
-            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):f.cpNo===32?_renderCP32Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
+            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
           </td>
           <td>${statusBadge(f.status, f.finding, f.cpNo)}</td>
           <td style="font-size:11px;color:var(--t2);max-width:150px;white-space:normal;line-height:1.4">${esc(f.evidence||'—')}</td>
@@ -6671,7 +6656,7 @@ ${needsReupload>0?`
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Finding</div>
-                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):f.cpNo===32?_renderCP32Finding(f.finding,false):esc(f.finding)}</div>
+                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
                 </div>
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -8262,7 +8247,7 @@ function openViewer(asgId,cpNo){
   const sLabel=s==='Pass'?'✓ Pass':s==='Exception'?'⚠ Exception':'⤴ Manual Review';
   const _sb=document.getElementById('vwr-status-badge'); if(_sb) _sb.innerHTML=`<span class="badge ${s==='Pass'?'badge-green':s==='Exception'?'badge-red':'badge-amber'}" style="font-size:13px;padding:6px 14px">${sLabel}</span>`;
   const _cp=document.getElementById('vwr-cp'); if(_cp) _cp.innerHTML=`<strong>CP${cpNo}</strong> — ${esc(cp.cp)}`;
-  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else if(f.cpNo===32){_fi.innerHTML=_renderCP32Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
+  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
   const _ev=document.getElementById('vwr-evidence'); if(_ev) _ev.textContent=f.evidence;
   const _re=document.getElementById('vwr-rec'); if(_re) _re.textContent=f.rec||'No recommendation.';
   const _doc=document.getElementById('vwr-doc'); if(_doc) _doc.innerHTML=buildDocContent(f,cp);
@@ -8957,7 +8942,7 @@ function setFindingsFilter(tab){
       <td>${phaseTag(cp.phase)}</td>
       <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
       <td style="font-size:12px;color:var(--t1)">
-        ${f.cpNo===30?_renderCP30Finding(f.finding,true):f.cpNo===32?_renderCP32Finding(f.finding,true):esc(f.finding)}
+        ${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}
         ${hasSub?`<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
           ${subExc>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(204,34,0,0.10);color:#CC2200">✕ ${subExc} Exc</span>`:''}
           ${subMR>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(217,119,6,0.10);color:#D97706">◑ ${subMR} Review</span>`:''}
@@ -8995,7 +8980,7 @@ function setFindingsFilter(tab){
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Summary Finding</div>
-              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):f.cpNo===32?_renderCP32Finding(f.finding,false):esc(f.finding)}</div>
+              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
             </div>
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -9933,101 +9918,6 @@ function _renderCP30Finding(text,compact){
   return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
 }
 
-
-function _parseCP32(text){
-  const result={intro:'',rows:[],docGaps:[],summary:null};
-  if(!text) return result;
-  // Extract intro paragraph (before table)
-  const tblStart=text.search(/Policy.?ID|Three.?Way|POLICY/i);
-  if(tblStart>0) result.intro=text.substring(0,tblStart).trim();
-  // Parse table rows: look for pattern like TP001 ... 
-  const rowRe=/(TP\d{3})[^\r\n]*/gi;
-  let m;
-  while((m=rowRe.exec(text))!==null){
-    result.rows.push({raw:m[0],policyId:m[1]});
-  }
-  // Look for exception type tags
-  const excTypes=[];
-  if(/Source vs Register Mismatch|data exception/i.test(text)) excTypes.push('Mismatch');
-  if(/Auditor Computation Error|auditor error/i.test(text)) excTypes.push('Auditor Error');
-  if(/Premium Register Error|register error/i.test(text)) excTypes.push('Register Error');
-  if(/Documentation Gap|missing workpaper|unsigned review/i.test(text)) excTypes.push('Doc Gap');
-  result.excTypes=excTypes;
-  // Count policies flagged
-  const policyMatches=[...text.matchAll(/TP\d{3}/g)];
-  const uniquePolicies=new Set(policyMatches.map(function(mm){return mm[0];}));
-  result.policiesScanned=uniquePolicies.size;
-  result.policiesFlagged=[...text.matchAll(/Exception|Mismatch|Error|Gap/gi)].length;
-  return result;
-}
-
-function _renderCP32Finding(text,compact){
-  if(!text||text==='—') return compact?esc(text||'—'):'<span style="color:var(--t3)">—</span>';
-  const parsed=_parseCP32(text);
-  const excColors={Mismatch:'#EF4444','Auditor Error':'#F59E0B','Register Error':'#EF4444','Doc Gap':'#6366F1'};
-  if(compact){
-    if(!parsed.excTypes||!parsed.excTypes.length) return '<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:700">✓ All premiums verified</span>';
-    const badges=parsed.excTypes.map(function(et){
-      const clr=excColors[et]||'#EF4444';
-      return '<span style="display:inline-block;margin-right:4px;font-size:10px;padding:2px 8px;border-radius:10px;background:'+clr+'1a;color:'+clr+';font-weight:700">⚠ '+et+'</span>';
-    }).join('');
-    return badges;
-  }
-  // Full render
-  let h='';
-  if(parsed.intro) h+='<div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.5;padding:10px 12px;background:rgba(99,102,241,0.05);border-radius:6px;border-left:3px solid #6366F1">'+esc(parsed.intro)+'</div>';
-  // Exception type badges
-  if(parsed.excTypes&&parsed.excTypes.length){
-    h+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">';
-    parsed.excTypes.forEach(function(et){
-      const clr=excColors[et]||'#EF4444';
-      h+='<span style="font-size:11px;padding:4px 12px;border-radius:10px;background:'+clr+'1a;color:'+clr+';font-weight:700;border:1px solid '+clr+'44">⚠ '+et+'</span>';
-    });
-    h+='</div>';
-  }
-  // Three-way variance table (parse policy rows from text)
-  const tableRe=/\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|([^|\r\n]+)\|/g;
-  const tableRows=[];
-  let tm;
-  while((tm=tableRe.exec(text))!==null){
-    const cols=Array.from({length:10},function(_,i){return tm[i+1]?tm[i+1].trim():'';});
-    if(cols[0].match(/^-+$|^Policy.?ID/i)) continue;
-    if(cols[0].match(/TP\d{3}/i)) tableRows.push(cols);
-  }
-  if(tableRows.length){
-    h+='<div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:11px">'
-      +'<thead><tr style="background:var(--bg2)">'
-      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Policy</th>'
-      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Type</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">CC (Src)</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">CC (Reg)</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">AI Premium</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Auditor Premium</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Register Premium</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Var (AI vs Reg)</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Var (AI vs Aud)</th>'
-      +'<th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--t2);border-bottom:2px solid var(--border);white-space:nowrap">Exception</th>'
-      +'</tr></thead><tbody>';
-    tableRows.forEach(function(r,ri){
-      const hasExc=r[9]&&r[9]!=='-'&&r[9].trim()!=='None'&&r[9].trim()!=='';
-      const bg=ri%2===0?'var(--bg2)':'var(--bg3)';
-      const excClr=hasExc?'#EF4444':'#10B981';
-      h+='<tr style="background:'+bg+'">';
-      r.forEach(function(cell,ci){
-        const align=ci>=2&&ci<=8?'right':'left';
-        const fw=ci===0||ci===9?'700':'400';
-        const clr=ci===9?(hasExc?'#EF4444':'#10B981'):'var(--t1)';
-        h+='<td style="padding:6px 10px;text-align:'+align+';font-weight:'+fw+';color:'+clr+';border-bottom:1px solid var(--border);white-space:nowrap">'+esc(cell)+'</td>';
-      });
-      h+='</tr>';
-    });
-    h+='</tbody></table></div>';
-  } else {
-    // Fallback: render as formatted text
-    h+='<div style="font-size:12px;color:var(--t1);line-height:1.7;white-space:pre-wrap">'+esc(text)+'</div>';
-  }
-  return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
-}
 
 function _drawIntelRings(dims){
   const container=document.getElementById('intel-rings');
