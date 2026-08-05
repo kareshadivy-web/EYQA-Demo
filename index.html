@@ -2197,8 +2197,8 @@ let CHECKLIST = [
     instructions:'Check the RCM, APM, and walkthrough minutes and confirm that all relevant risks and controls related to the process are listed. If something important seems missing, highlight it.' },
   { no:8,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Validate all risks from the Risk Register are included in the RCM',                                       docs:'Risk Register, RCM',
     instructions:'Compare risks listed in column "Risk" of the Risk Register with column "Risk description" in the RCM. Flag as Exception if any risk is present in the Risk Register but missing in the RCM.' },
-  { no:9,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Evaluate completeness of risk coverage using RCM Universe — identify key risks missing from RCM or Risk Register and flag APM scope gaps',  docs:'Risk Register',
-    instructions:'You have access to an internal RCM Universe (RCM_UNIVERSE constant) containing reference risks for 16 standard processes. Perform a three-way completeness check as follows:\n\n(1) IDENTIFY PROCESS — Read the APM to determine the engagement process (e.g. Arrears Management, Claims, New Business). Match it to the closest process key in RCM_UNIVERSE. If no match found, return Manual Review.\n\n(2) EXTRACT UNIVERSE RISKS — From RCM_UNIVERSE, extract all risks for the matched process. These are your benchmark.\n\n(3) READ APM SCOPE — List the scope areas the auditor committed to cover in the APM.\n\n(4) READ RCM AND RISK REGISTER — Extract all risk descriptions from the uploaded RCM and Risk Register.\n\n(5) THREE-WAY CHECK — For each universe risk, determine:\n   A) Is it within APM scope? (YES / NO)\n   B) Is it captured in RCM or Risk Register? (YES / NO / PARTIAL)\n\n(6) CLASSIFY EACH UNIVERSE RISK:\n   - EXCEPTION: In APM scope AND missing from both RCM and Risk Register\n   - PARTIAL: In APM scope AND partially addressed but incomplete\n   - COVERED: In APM scope AND clearly captured\n   - OUT OF SCOPE: Not in APM scope (acceptable — do not flag as exception)\n\n(7) APM GAP ANALYSIS — From the universe risks marked OUT OF SCOPE, identify which sub-processes you consider HIGH RISK for this type of engagement that should have been included in the APM scope. Briefly explain why each is high risk.\n\nOUTPUT FORMAT — Write a concise finding (under 120 words) covering:\n   • Total universe risks for this process\n   • Number covered / partial / exceptions\n   • List each EXCEPTION by sub-process name and one-line plain-English explanation of the gap\n   • List 2-3 key APM scope gaps (sub-processes not in APM that AI considers high risk for this process)\n   • Rating: Exception if ≥1 exception found; Pass if all in-scope universe risks are covered; Manual Review if process not matched in universe' },
+  { no:9,  phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Evaluate completeness of risk coverage using RCM Universe — independently assess what risks are missing from RCM, Risk Register and APM scope',  docs:'Risk Register',
+    instructions:'You have access to RCM_UNIVERSE — a benchmark risk library for 16 standard audit processes. Produce FOUR independent analyses. Return your finding in this exact structured format using these exact section headers:\n\nGAP1_RCM | <count> risks from universe missing in RCM\n- <Sub-process name>: <one plain-English sentence — what risk is missing and why it matters>\n- (repeat for each missing risk)\n\nGAP2_RR | <count> risks from universe missing in Risk Register\n- <Sub-process name>: <one plain-English sentence>\n- (repeat for each missing risk)\n\nGAP3_APM | <count> universe risks not covered in APM scope\n- <Sub-process name>: <one plain-English sentence — what was scoped out and the consequence>\n- (repeat for ALL universe risks outside APM scope)\n\nGAP4_BLIND | <count> high-risk areas not in universe, RCM, Risk Register or APM — identified by AI\n- <Risk area name> [HIGH/MEDIUM RISK]: <one plain-English sentence — why this matters for this process type based on regulatory context and industry knowledge>\n- (minimum 3, maximum 6 items — must not appear in any uploaded document or universe)\n\nSUMMARY | <one sentence: total universe risks, gaps found across each analysis, overall rating>\n\nHOW TO PERFORM EACH ANALYSIS:\n(1) IDENTIFY PROCESS — Read APM → find engagement process → match to RCM_UNIVERSE key. If no match → Manual Review.\n(2) EXTRACT UNIVERSE — Get all risks for matched process from RCM_UNIVERSE.\n(3) GAP1 (RCM check) — For each universe risk, check if a semantically equivalent risk exists in the uploaded RCM. If absent → list it under GAP1_RCM. Independent — check all 22 risks regardless of other gaps.\n(4) GAP2 (Risk Register check) — For each universe risk, check if a semantically equivalent risk exists in the uploaded Risk Register. If absent → list it under GAP2_RR. Independent from GAP1 — same risk can appear in both.\n(5) GAP3 (APM scope check) — For each universe risk, check if the APM scope commits to covering that sub-process area. If not covered in APM → list under GAP3_APM. List ALL excluded universe risks, not just high-risk ones.\n(6) GAP4 (AI blind spots) — Using your knowledge of regulatory requirements, industry standards and the engagement narrative, identify material risks that do not appear anywhere — not in universe, not in RCM, not in Risk Register, not in APM. These are completely overlooked areas. Minimum 3 items.\n\nRATING: Exception if any gap found in GAP1, GAP2 or GAP3. Pass only if all universe risks covered in all three documents. Manual Review if process not matched.' },
   { no:10, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check sub-processes and test steps are aligned with APM scope',                                           docs:'APM, RCM',
     instructions:'Check if all scoped items in APM are covered in RCM column "Control Description" only. Do not review other columns. If anything is left out, highlight it as an exception.' },
   { no:11, phase:'Fieldwork', act:'Development and Review of RCM',       cp:'Check test steps cover all attributes of controls (5W1H)',                                                docs:'RCM',
@@ -2296,10 +2296,51 @@ const CANONICAL_FINDINGS = [
     rec:'Map the 3 missing risks (Governance accountability, MI accuracy in trackers, Failure to issue regulatory notices on time) into the RCM with corresponding controls and control descriptions.' },
 
   { cpNo:9, status:'Exception',
-    finding:'RCM Universe three-way check (22 universe risks for Arrear Management process): 7 covered, 2 partial, 6 exceptions. Exceptions — all in APM scope but absent from RCM and Risk Register: (1) Arrear Allocation & Segmentation — no risk for account prioritisation; (2) Collection Follow-up — no risk for timely customer follow-up; (3) Data Integrity Management — no risk for cross-system data accuracy; (4) Recovery & Escalation — escalation to DCA/debt purchasers mentioned in APM but no risk captured; (5) Complaint & Dispute Management — Consumer Duty referenced in APM but complaint risk absent; (6) Outsourced Collection Agency (DCA) Oversight — explicitly in APM scope, zero corresponding risk. APM scope gaps (high-risk sub-processes not considered): Collection Receipt Processing (incorrect payment allocation causes customer detriment), Arrear Reconciliation (two systems in scope — ABC and XYZ — no reconciliation risk), Write-off Management (debt sale and litigation mentioned in APM narrative but no risk captured).',
-    evidence:'RCM_UNIVERSE[Arrear Management] vs APM scope areas vs RCM.xlsx (7 risks) vs Risk_Register.xlsx (10 risks)',
+    finding:`GAP1_RCM | 13 risks from universe missing in RCM
+- Arrear Allocation & Segmentation: No risk captured for incorrect prioritisation of arrear accounts — high-risk cases may not receive timely intervention.
+- Collection Follow-up: No risk for failure to initiate timely follow-up with customers — outstanding balances accumulate undetected.
+- Policy Continuation Management: No risk for unauthorised policy coverage on overdue accounts — financial exposure uncontrolled.
+- Policy Suspension / Cancellation: No risk for failure to default accounts per CCA 1974 — regulatory breach unmitigated.
+- Collection Receipt Processing: No risk for incorrect payment allocation — customers continue to be chased despite having paid.
+- Intermediary Arrear Management: No risk for dues from agents/brokers — financial loss from third-party arrears unmonitored.
+- Arrear Reconciliation: No risk for balance mismatches between ABC and XYZ systems — incorrect recovery actions taken on wrong data.
+- Write-off Management: No risk for unapproved write-offs — fraud and financial loss exposure unaddressed.
+- Provisioning for Doubtful Dues: No risk for inadequate provisioning — financial statements potentially misstated.
+- Data Integrity Management: No risk for cross-system data accuracy — collections team acting on unreliable information.
+- Recovery & Escalation Process: No risk for failure to escalate long-outstanding arrears — bad debts accumulate without intervention.
+- Complaint & Dispute Management: No risk for arrear-related complaints — Consumer Duty obligation unmitigated.
+- Outsourced Collection Agency Management: No risk for DCA oversight — third-party misconduct undetected and uncontrolled.
+
+GAP2_RR | 9 risks from universe missing in Risk Register
+- Arrear Allocation & Segmentation: Account prioritisation risk absent — Risk Register does not reflect this standard arrears sub-process.
+- Collection Follow-up: No follow-up failure risk — Risk Register silent on timely customer contact obligations.
+- Collection Receipt Processing: Payment allocation risk absent — incorrect receipts not flagged as a registered risk.
+- Arrear Reconciliation: Inter-system reconciliation risk not registered — two live systems with no reconciliation risk ownership.
+- Write-off Management: Write-off governance risk not registered — no risk owner for approval and processing controls.
+- Provisioning for Doubtful Dues: Provisioning risk absent — financial reporting impact not registered.
+- Data Integrity Management: Data accuracy risk not registered — collections decisions made on potentially incorrect system data.
+- Recovery & Escalation Process: Escalation failure not a registered risk — no risk trigger for long-outstanding accounts.
+- Complaint & Dispute Management: Complaint handling risk not registered — Consumer Duty gap with no risk ownership.
+
+GAP3_APM | 7 universe risks not covered in APM scope
+- Policy Continuation Management: APM does not commit to reviewing whether overdue accounts remain active — unauthorised coverage risk unscoped.
+- Policy Suspension / Cancellation: Defaulting process not in APM scope — statutory CCA 1974 compliance for account closure unreviewed.
+- Collection Receipt Processing: Payment receipt allocation not scoped — customers potentially chased for settled balances.
+- Intermediary Arrear Management: Agent and broker arrears not in APM scope — third-party dues unmonitored.
+- Arrear Reconciliation: Reconciliation between ABC and XYZ systems not in APM scope — data integrity blind spot given two systems are in use.
+- Write-off Management: Write-off and debt sale governance not in APM scope despite being referenced in APM narrative — material financial risk unaudited.
+- Provisioning for Doubtful Dues: Financial provisioning not in APM scope — misstated balance sheet risk unaddressed.
+
+GAP4_BLIND | 4 high-risk areas not in universe, RCM, Risk Register or APM — identified by AI
+- Vulnerable Customer Over-Indebtedness Assessment [HIGH RISK]: FCA Consumer Duty requires firms to assess whether forbearance offered is genuinely affordable and does not worsen customer financial position — no such assessment risk exists anywhere in the engagement documentation.
+- CONC 7 Regulatory Compliance Monitoring [HIGH RISK]: FCA CONC 7 sets specific obligations on arrears communication content, timing and frequency — no risk captures the consequence of breaching these obligations despite this being a core regulatory requirement for collections firms.
+- Operational Resilience of Collections Systems [MEDIUM RISK]: FCA Operational Resilience rules require firms to identify and test important business services — ABC and XYZ systems support critical collections workflows but no risk addresses system unavailability impact on customer contact and regulatory obligations.
+- Mental Health and Vulnerability Escalation Protocol [MEDIUM RISK]: Collections staff are required under Consumer Duty and FCA guidance to identify and appropriately handle customers disclosing mental health issues or financial vulnerability — no risk captures inadequate identification or inappropriate escalation in this context.
+
+SUMMARY | RCM Universe (22 risks, Arrear Management process) assessed against APM, RCM and Risk Register: 13 risks absent from RCM, 9 absent from Risk Register, 7 universe risks unscoped in APM, and 4 additional AI-identified blind spots completely absent from all documents — overall rating Exception.`,
+    evidence:'RCM_UNIVERSE[Arrear Management] (22 risks) vs APM scope (7 areas) vs RCM.xlsx (7 risks) vs Risk_Register.xlsx (10 risks)',
     srcDoc:'Risk_Register.xlsx',
-    rec:'Add risks for the 6 exception sub-processes to the RCM and Risk Register with corresponding controls. Revisit APM scope to include Collection Receipt Processing, Arrear Reconciliation and Write-off Management as these represent material risk areas for this engagement type.' },
+    rec:'Immediate: Add 13 missing risks to RCM and 9 to Risk Register with control owners. Revisit APM scope to include Collection Receipt Processing, Arrear Reconciliation and Write-off Management. Priority: address DCA oversight, Complaint & Dispute Management and Vulnerable Customer assessment as these carry direct Consumer Duty and regulatory breach exposure.' },
 
   { cpNo:10, status:'Pass',
     finding:'All APM scope areas have aligned RCM test steps.',
@@ -2434,7 +2475,27 @@ const CLAIMS_FINDINGS = [
   { cpNo:6,  status:'Pass',          finding:'All 12 RCM controls have complete 5W1H descriptions. Each control specifies owner, action, frequency, system, objective and mechanism.', evidence:'Claims_RCM_V21.xlsx — all 12 controls assessed', srcDoc:'Claims_RCM_V21.xlsx', rec:'No action required.' },
   { cpNo:7,  status:'Pass',          finding:'RCM scope covers all 8 APM scope areas: Lodgement, Assessment, Authorisation, Payment, Appeals, Fraud, System Controls, Reporting.', evidence:'APM scope vs RCM — all 8 areas matched', srcDoc:'Claims_RCM_V21.xlsx', rec:'No action required.' },
   { cpNo:8,  status:'Exception',     finding:'2 risks from Risk Register not mapped to RCM: (1) Duplicate claims payment risk; (2) Third-party fraud risk. Both are rated High in Risk Register.', evidence:'Risk_Register_2026.xlsx (14 risks) vs Claims_RCM_V21.xlsx (12 risks)', srcDoc:'Risk_Register_2026.xlsx', rec:'Map duplicate payment and third-party fraud risks to RCM with corresponding controls. Per IIA Standard 2210.' },
-  { cpNo:9,  status:'Exception', finding:'RCM Universe three-way check (37 universe risks for Claims Management process): Uploaded Risk Register covers standard claims risks but 4 universe risks absent from RCM and Risk Register — all within APM scope: (1) Fraudulent claims detection controls absent; (2) Third-party assessor oversight risk not captured; (3) Reserving adequacy risk not in RCM; (4) Claims leakage monitoring risk missing. APM scope gap: Subrogation and recovery management is a high-risk area for claims engagements not considered in APM scope.', evidence:'RCM_UNIVERSE[Claims Management] vs APM scope vs Risk_Register_2026.xlsx vs Claims_RCM_V21.xlsx', srcDoc:'Risk_Register_2026.xlsx', rec:'Add the 4 missing risks to the RCM with controls. Consider including Subrogation and Recovery management in APM scope for future Claims audits.' },
+  { cpNo:9,  status:'Exception', finding:`GAP1_RCM | 4 risks from universe missing in RCM
+- Fraudulent Claims Detection: No risk for false or inflated claims submission — financial loss and reputational exposure unmitigated in RCM.
+- Third-Party Assessor Oversight: No risk for inadequate oversight of external loss adjusters — incorrect settlement amounts undetected.
+- Reserving Adequacy: No risk for inadequate claims reserves — financial statements potentially understated.
+- Claims Leakage Monitoring: No risk for undetected overpayment or settlement errors — systematic financial loss uncontrolled.
+
+GAP2_RR | 3 risks from universe missing in Risk Register
+- Third-Party Assessor Oversight: Assessor governance risk not registered — no risk owner for external assessor performance.
+- Reserving Adequacy: Reserving risk not in Risk Register — financial reporting impact without registered ownership.
+- Claims Leakage Monitoring: Leakage risk not registered — overpayments not treated as a formal registered risk.
+
+GAP3_APM | 2 universe risks not covered in APM scope
+- Subrogation and Recovery Management: Right of recovery from third parties not in APM scope — potential revenue from recoveries unaudited.
+- Reinsurance Claims Recoveries: Recoveries due from reinsurers on large claims not in APM scope — financial leakage unreviewed.
+
+GAP4_BLIND | 3 high-risk areas not in universe, RCM, Risk Register or APM — identified by AI
+- Duplicate Claims Payment Detection [HIGH RISK]: Systematic controls to identify and prevent the same claim being paid twice are entirely absent from all engagement documentation — a common and material financial risk in claims operations.
+- Digital Claims Fraud (Deepfake / Synthetic Evidence) [HIGH RISK]: Emerging risk of fraudulent supporting evidence submitted via digital channels — not captured anywhere despite growing industry exposure.
+- Claims Handler Conflict of Interest [MEDIUM RISK]: No risk addresses situations where claims handlers may have personal relationships with claimants or assessors — a conduct and integrity risk absent from all documents.
+
+SUMMARY | RCM Universe (37 risks, Claims Management process) assessed against APM, RCM and Risk Register: 4 risks absent from RCM, 3 absent from Risk Register, 2 universe risks unscoped in APM, and 3 additional AI-identified blind spots completely absent from all documents — overall rating Exception.`, evidence:'RCM_UNIVERSE[Claims Management] (37 risks) vs APM scope vs Risk_Register_2026.xlsx vs Claims_RCM_V21.xlsx', srcDoc:'Risk_Register_2026.xlsx', rec:'Add the 4 missing RCM risks and 3 Risk Register gaps with control owners. Extend APM scope to include Subrogation and Reinsurance Recoveries. Prioritise duplicate payment detection controls as an immediate action.' },
   { cpNo:10, status:'Pass',          finding:'All 8 APM scope areas have aligned test steps in RCM.', evidence:'APM scope cross-referenced against RCM test steps — all matched', srcDoc:'Claims_RCM_V21.xlsx', rec:'No action required.' },
   { cpNo:11, status:'Pass',          finding:'All test steps enumerate 5W1H with numbered procedures, sample sizes and pass/fail criteria.', evidence:'Claims_RCM_V21.xlsx — test steps reviewed across all 12 controls', srcDoc:'Claims_RCM_V21.xlsx', rec:'No action required.' },
   { cpNo:12, status:'Pass',          finding:'TOD and TOE procedures documented for all 12 controls in RCM.', evidence:'RCM TOD/TOE columns — all 12 controls populated', srcDoc:'Claims_RCM_V21.xlsx', rec:'No action required.' },
@@ -6629,7 +6690,7 @@ ${needsReupload>0?`
           <td>${phaseTag(cp.phase)}</td>
           <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
           <td style="font-size:13px;color:var(--t1)">
-            <div>${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
+            <div>${f.cpNo===9?_renderCP09Finding(f.finding,true):f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}${sourceTag}</div>
           </td>
           <td>${statusBadge(f.status, f.finding, f.cpNo)}</td>
           <td style="font-size:11px;color:var(--t2);max-width:150px;white-space:normal;line-height:1.4">${esc(f.evidence||'—')}</td>
@@ -6662,7 +6723,7 @@ ${needsReupload>0?`
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Finding</div>
-                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
+                  <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===9?_renderCP09Finding(f.finding,false):f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
                 </div>
                 <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
                   <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -8253,7 +8314,7 @@ function openViewer(asgId,cpNo){
   const sLabel=s==='Pass'?'✓ Pass':s==='Exception'?'⚠ Exception':'⤴ Manual Review';
   const _sb=document.getElementById('vwr-status-badge'); if(_sb) _sb.innerHTML=`<span class="badge ${s==='Pass'?'badge-green':s==='Exception'?'badge-red':'badge-amber'}" style="font-size:13px;padding:6px 14px">${sLabel}</span>`;
   const _cp=document.getElementById('vwr-cp'); if(_cp) _cp.innerHTML=`<strong>CP${cpNo}</strong> — ${esc(cp.cp)}`;
-  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
+  const _fi=document.getElementById('vwr-finding'); if(_fi){if(f.cpNo===9){_fi.innerHTML=_renderCP09Finding(f.finding,false);}else if(f.cpNo===30){_fi.innerHTML=_renderCP30Finding(f.finding,false);}else{_fi.textContent=f.finding;}}
   const _ev=document.getElementById('vwr-evidence'); if(_ev) _ev.textContent=f.evidence;
   const _re=document.getElementById('vwr-rec'); if(_re) _re.textContent=f.rec||'No recommendation.';
   const _doc=document.getElementById('vwr-doc'); if(_doc) _doc.innerHTML=buildDocContent(f,cp);
@@ -8948,7 +9009,7 @@ function setFindingsFilter(tab){
       <td>${phaseTag(cp.phase)}</td>
       <td style="font-weight:600;font-size:12px;color:var(--t1)">${esc(cp.act)}</td>
       <td style="font-size:12px;color:var(--t1)">
-        ${f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}
+        ${f.cpNo===9?_renderCP09Finding(f.finding,true):f.cpNo===30?_renderCP30Finding(f.finding,true):esc(f.finding)}
         ${hasSub?`<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
           ${subExc>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(204,34,0,0.10);color:#CC2200">✕ ${subExc} Exc</span>`:''}
           ${subMR>0?`<span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:rgba(217,119,6,0.10);color:#D97706">◑ ${subMR} Review</span>`:''}
@@ -8986,7 +9047,7 @@ function setFindingsFilter(tab){
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Summary Finding</div>
-              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
+              <div style="font-size:13px;color:var(--t1);line-height:1.5">${f.cpNo===9?_renderCP09Finding(f.finding,false):f.cpNo===30?_renderCP30Finding(f.finding,false):esc(f.finding)}</div>
             </div>
             <div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px">
               <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:5px">Recommendation</div>
@@ -9924,6 +9985,87 @@ function _renderCP30Finding(text,compact){
   return h||('<div style="line-height:1.7">'+esc(text)+'</div>');
 }
 
+
+
+function _parseCP09(text){
+  const result={gap1:[],gap2:[],gap3:[],gap4:[],summary:'',
+                cnt1:0,cnt2:0,cnt3:0,cnt4:0};
+  if(!text) return result;
+  const sectionRe=/GAP(\d)_(?:RCM|RR|APM|BLIND)\s*\|\s*(\d+)[^\n]*\n([\s\S]*?)(?=GAP\d_|SUMMARY\s*\||$)/g;
+  let m;
+  while((m=sectionRe.exec(text))!==null){
+    const num=parseInt(m[1]);
+    const cnt=parseInt(m[2]);
+    const body=m[3];
+    const items=body.split(/\n-\s+/).filter(s=>s.trim()).map(s=>s.trim());
+    if(num===1){result.gap1=items;result.cnt1=cnt;}
+    else if(num===2){result.gap2=items;result.cnt2=cnt;}
+    else if(num===3){result.gap3=items;result.cnt3=cnt;}
+    else if(num===4){result.gap4=items;result.cnt4=cnt;}
+  }
+  const sumM=text.match(/SUMMARY\s*\|\s*([^\n]+)/);
+  if(sumM) result.summary=sumM[1].trim();
+  return result;
+}
+
+function _renderCP09Finding(text,compact){
+  if(!text||text==='—') return compact?esc(text||'—'):'<span style="color:var(--t3)">—</span>';
+  const p=_parseCP09(text);
+  const totalGaps=(p.cnt1||p.gap1.length)+(p.cnt2||p.gap2.length)+(p.cnt3||p.gap3.length);
+  if(compact){
+    if(!totalGaps&&!p.gap4.length) return '<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:700">✓ All universe risks covered</span>';
+    let h='';
+    if(p.gap1.length) h+='<span style="display:inline-block;margin-right:4px;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,0.12);color:#EF4444;font-weight:700">'+p.gap1.length+' missing in RCM</span>';
+    if(p.gap2.length) h+='<span style="display:inline-block;margin-right:4px;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,0.12);color:#B45309;font-weight:700">'+p.gap2.length+' missing in Risk Register</span>';
+    if(p.gap3.length) h+='<span style="display:inline-block;margin-right:4px;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.12);color:#6366F1;font-weight:700">'+p.gap3.length+' outside APM scope</span>';
+    if(p.gap4.length) h+='<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.12);color:#047857;font-weight:700">'+p.gap4.length+' AI blind spots</span>';
+    return h||esc(text.substring(0,120))+(text.length>120?'…':'');
+  }
+  // Full render
+  function renderSection(title,items,cnt,borderColor,bgColor,badgeColor,icon){
+    if(!items||!items.length) return '';
+    const count=cnt||items.length;
+    let h='<div style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid '+borderColor+';border-radius:8px;padding:14px 16px;margin-bottom:12px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+        +'<span style="font-size:18px">'+icon+'</span>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:12px;font-weight:700;color:var(--t1)">'+esc(title)+'</div>'
+        +'</div>'
+        +'<span style="font-size:11px;padding:3px 10px;border-radius:10px;background:'+bgColor+';color:'+badgeColor+';font-weight:700">'+count+' gaps identified</span>'
+      +'</div>';
+    items.forEach(function(item){
+      const colon=item.indexOf(':');
+      const label=colon>0?item.substring(0,colon).trim():item;
+      const desc=colon>0?item.substring(colon+1).trim():'';
+      // detect risk level badge for gap4
+      const riskM=label.match(/\[(HIGH|MEDIUM|LOW)\s*RISK\]/i);
+      const cleanLabel=label.replace(/\s*\[.*?\]/,'').trim();
+      const riskClr=riskM?(riskM[1].toUpperCase()==='HIGH'?'#EF4444':riskM[1].toUpperCase()==='MEDIUM'?'#F59E0B':'#10B981'):'';
+      h+='<div style="display:flex;gap:8px;padding:8px 10px;margin-bottom:6px;background:var(--bg3);border-radius:6px;border:1px solid var(--border)">'
+        +'<span style="color:'+borderColor+';font-size:12px;flex-shrink:0;margin-top:1px">▸</span>'
+        +'<div style="flex:1;min-width:0">'
+          +'<span style="font-size:11px;font-weight:700;color:var(--t1)">'+esc(cleanLabel)+'</span>'
+          +(riskClr?'<span style="margin-left:6px;font-size:9px;padding:1px 6px;border-radius:4px;background:'+riskClr+'22;color:'+riskClr+';font-weight:700">'+riskM[1].toUpperCase()+' RISK</span>':'')
+          +(desc?'<div style="font-size:11px;color:var(--t2);margin-top:2px;line-height:1.5">'+esc(desc)+'</div>':'')
+        +'</div>'
+      +'</div>';
+    });
+    h+='</div>';
+    return h;
+  }
+  let h='';
+  h+=renderSection('Gap 1 — Risks missing from RCM',p.gap1,p.cnt1,'#EF4444','rgba(239,68,68,0.1)','#EF4444','📋');
+  h+=renderSection('Gap 2 — Risks missing from Risk Register',p.gap2,p.cnt2,'#F59E0B','rgba(245,158,11,0.1)','#B45309','📊');
+  h+=renderSection('Gap 3 — Universe risks not covered in APM scope',p.gap3,p.cnt3,'#6366F1','rgba(99,102,241,0.1)','#6366F1','🗺️');
+  h+=renderSection('Gap 4 — AI-identified blind spots (absent from all documents)',p.gap4,p.cnt4,'#047857','rgba(16,185,129,0.1)','#047857','🔍');
+  if(p.summary){
+    h+='<div style="padding:10px 14px;border-radius:6px;background:rgba(0,0,0,0.04);border:1px solid var(--border);margin-top:4px">'
+      +'<span style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:1px">Summary</span>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:4px;line-height:1.5">'+esc(p.summary)+'</div>'
+    +'</div>';
+  }
+  return h||('<div style="line-height:1.7;font-size:12px">'+esc(text)+'</div>');
+}
 
 function _drawIntelRings(dims){
   const container=document.getElementById('intel-rings');
