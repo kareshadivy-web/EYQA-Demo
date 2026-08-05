@@ -1831,8 +1831,8 @@ a { color: inherit; text-decoration: none; }
         <div class="cl-choice active" id="cl-default" onclick="selectCL('default')">
           <div class="cl-choice-eyebrow">Recommended</div>
           <div class="cl-choice-title">Standard Library</div>
-          <div class="cl-choice-sub">31 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
-          <div class="cl-choice-count" id="cl-default-count">31 checkpoints loaded</div>
+          <div class="cl-choice-sub">32 checkpoints across Planning, Fieldwork, Reporting — IIA aligned.</div>
+          <div class="cl-choice-count" id="cl-default-count">32 checkpoints loaded</div>
         </div>
         <div class="cl-choice" id="cl-custom" onclick="selectCL('custom')">
           <div class="cl-choice-eyebrow">Custom</div>
@@ -2179,7 +2179,7 @@ a { color: inherit; text-decoration: none; }
 "use strict";
 
 /* ============================================================
-   DATA — Checklist (31 checkpoints)
+   DATA — Checklist (32 checkpoints)
    ============================================================ */
 let CHECKLIST = [
   { no:1,  phase:'Planning',  act:'Review of APM / Scope Letter',        cp:'Flag missing rationale for scope exclusions / de-scoped controls',                                         docs:'APM' },
@@ -2225,6 +2225,9 @@ let CHECKLIST = [
   { no:29, phase:'Reporting', act:'Executive Summary',                   cp:'Assess quality of Executive Summary and inclusion of all critical issues',                               docs:'Executive Reports' },
   { no:30, phase:'Reporting', act:'Observation Rating Challenge',         cp:'Check the appropriateness of audit observation ratings',                                                    docs:'Audit Report',
     instructions:'For each finding in the audit report, assess whether the assigned rating (Critical / High / Medium / Low / Improvement Recommended) is appropriate. Apply the following four tests: (1) Regulatory / statutory breach — any obligation under CCA, FCA, Consumer Duty, or prudential regulation at material risk elevates the finding to at least Medium; systemic breach or evidence of actual instances elevates to High. (2) Customer outcome impact — evidence of direct financial or welfare harm to customers elevates to at least Medium; systemic or widespread impact elevates to High. (3) Root cause depth — a failure in process design or governance is inherently more severe than a one-off control lapse and should be rated accordingly. (4) Recurrence — if a similar finding appeared in the prior year engagement, the current year rating should reflect escalation. Also check: if two separately-rated findings share the same root cause or compound to a greater combined risk, flag whether that combined risk has been acknowledged and rated. Flag as Exception if: any finding appears under-rated against two or more of the above tests; or no evidence of independent rating challenge or peer review is documented in the audit workpapers.' },
+
+  { no:31, phase:'Fieldwork', act:'Documentation and Review',            cp:'Validate that all planned test procedures in workpaper lead sheets are fully evidenced in the work performed — flag any step planned but absent from execution',                                              docs:'Workpapers',
+    instructions:'For each uploaded workpaper, perform the following step-by-step comparison and write a concise finding (3-5 sentences max):\n\n(1) LOCATE PROCEDURES — Find the planned test steps. Look for a field or section labelled: Procedures, Test Steps, Work Programme, TOD, TOE, Audit Steps, or Planned Testing. If the workpaper has multiple sheets, check all sheets. If no procedures section is found at all, return status Manual Review with finding explaining the lead sheet could not be located.\n\n(2) LIST PLANNED STEPS — Extract each numbered or lettered step (i, ii, iii or 1, 2, 3) from the procedures section. These are the steps the auditor committed to perform.\n\n(3) CROSS-MATCH AGAINST WORK PERFORMED — Read the Detailed Work Performed field (or equivalent execution section). For each planned step, check: is there a corresponding paragraph or sentence in the work performed that addresses it? Flag any planned step with no matching execution as a Gap.\n\n(4) MANDATORY FIELDS CHECK — Confirm these fields are populated: Sample size, Sampling rationale, Observations, and if an issue was noted — Title, Rating, Root cause, Remediation action, Due date.\n\n(5) SELF-EXCLUSION CHECK — If the auditor excluded part of the planned scope mid-test (e.g. "minutes not in scope", "not obtained"), flag whether this exclusion was documented in the APM or is a self-imposed mid-test scope reduction without prior authorisation.\n\nRating: Exception if ≥1 planned step has no evidence in work performed, or a mandatory field is blank, or an unauthorised mid-test scope reduction is applied. Pass if all steps evidenced and all mandatory fields populated. Manual Review if no procedures section can be located.\n\nKeep finding under 80 words. Name the specific workpaper, the step number(s) that failed, and the nature of the gap.' },
   { no:32, phase:'Fieldwork', act:'Premium Recomputation Testing',         cp:'Independently recompute TP premiums against approved tariff rates and reconcile with premium register and auditor workpapers',     docs:'Premium Recalculation',
     instructions:'You are performing QA on a Third-Party (TP) motor insurance premium recomputation audit. The uploaded workbook contains multiple sheets — read ALL sheets before drawing conclusions. Silently perform the following seven checks internally, then write a concise summary finding (3–5 sentences max) covering only the exceptions found:\n\n(1) TARIFF VALIDATION — From Tariff_Master sheet: confirm tariff bands are consistent and cover all vehicle categories in Premium_Register.\n(2) SOURCE DATA INTEGRITY — Compare Engine_CC in Client_Source_Data vs Premium_Register for each Policy_ID. Count policies where CC differs — these are Source vs Register Mismatches.\n(3) INDEPENDENT RECOMPUTATION — Using Client_Source_Data CC and Tariff_Master, compute the correct premium for each policy. This is your AI-recomputed premium.\n(4) AUDITOR COMPUTATION ERRORS — Compare Auditor_Recomputed_Premium (Auditor_Recomputation sheet) against your AI-recomputed premium. Count discrepancies.\n(5) REGISTER ACCURACY — Compare Registered_Premium (Premium_Register) against AI-recomputed premium. Count and sum financial impact of errors.\n(6) THREE-WAY VARIANCE — Identify which policy IDs have mismatches across Source CC, Register CC, AI Premium, Auditor Premium, and Registered Premium. List only exception policy IDs.\n(7) DOCUMENTATION — From Work_Done sheet: count policies missing workpapers or reviewer sign-off.\n\nRating: Exception if any check finds ≥1 issue. Pass only if all seven checks are clean.\n\nFINDING FORMAT: Write 3–5 sentences. State total policies reviewed, how many exceptions found, which policy IDs are affected and why (e.g. CC mismatch, wrong tariff applied, financial variance amount), and any documentation gaps. Do NOT list every policy or produce a table — only state the exceptions. Keep it under 100 words.' },
 ];
@@ -2403,6 +2406,12 @@ const CANONICAL_FINDINGS = [
     evidence:'Arrears_Mgmt_Final_Audit_Report.pdf — 7 findings reviewed; Findings 1, 2 and 6 under-rated; compounding risk between Findings 1 and 7 unacknowledged', srcDoc:'Arrears_Mgmt_Final_Audit_Report.pdf',
     rec:'Re-assess ratings for Findings 1, 2 and 6 with documented rationale. Acknowledge compounding risk between Findings 1 and 7 in the Executive Summary. Introduce a mandatory independent rating challenge step (peer review sign-off) in the QA process before report issue.' },
 
+  { cpNo:31, status:'Exception',
+    finding:'Workpaper C2 (Review of Governance and Oversight) — TOE Step i planned to verify quorum adherence in sample meeting packs; work performed documents agenda items only and contains no evidence of quorum testing. Additionally, CEWG minutes were self-excluded at both TOD Step ii and TOE Step ii ("owned by Customer Experience team — not in scope") without this exclusion being reflected in the APM scope, constituting an unauthorised mid-test scope reduction.',
+    evidence:'Workpapers__Arrear_C2.xlsx — TOE Sheet, Procedures Step i vs Detailed Work Performed; TOD/TOE Sheet, Procedures Step ii vs Notes',
+    srcDoc:'Workpapers__Arrear_C2.xlsx',
+    rec:'Obtain and document quorum evidence for sampled CWG/CEWG meetings or update the test procedure to remove quorum as a planned step. Obtain APM sign-off for CEWG minutes exclusion or reinstate CEWG minutes testing.' },
+
   { cpNo:32, status:'Manual Review',
     finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Arrears Management audit covers consumer credit collections and forbearance processes — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
     evidence:'Engagement type: Internal Audit Review — Arrears Management (consumer credit). No premium or tariff data available.',
@@ -2442,6 +2451,12 @@ const CLAIMS_FINDINGS = [
   { cpNo:27, status:'Pass',          finding:'Agreed completion dates documented for all 5 actionable findings.', evidence:'Claims_Final_Audit_Report.pdf — 5 completion dates confirmed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
   { cpNo:29, status:'Pass',          finding:'Executive Summary covers all Medium and High rated findings with clear risk articulation.', evidence:'Claims_Final_Audit_Report.pdf — Executive Summary reviewed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
   { cpNo:30, status:'Pass',          finding:'All 5 finding ratings reviewed and assessed as appropriate. High-rated findings (duplicate payment and fraud exposure) substantiated by actual instances and regulatory obligation. Medium ratings supported by documented root cause depth. Independent rating challenge documented via peer review sign-off dated 10 Jun 2026.', evidence:'Claims_Final_Audit_Report.pdf — 5 findings, rating rationale and peer review sign-off confirmed', srcDoc:'Claims_Final_Audit_Report.pdf', rec:'No action required.' },
+  { cpNo:31, status:'Manual Review',
+    finding:'Workpaper lead sheet verification requires workpapers to be uploaded for this engagement. No workpaper files are available in the Claims V21 document set to perform step-level procedure cross-matching.',
+    evidence:'No workpapers uploaded for Claims V21 engagement',
+    srcDoc:'Claims_APM_V21.docx',
+    rec:'Upload workpaper files to enable CP31 lead sheet verification.' },
+
   { cpNo:32, status:'Manual Review',
     finding:'Premium Recomputation Testing (CP32) is not applicable to this engagement. The Claims V21 audit covers claims processing operations — it does not involve TP motor insurance premium calculations or tariff rate validation. Upload a Premium Recalculation workbook from a GI TP insurance engagement to run this checkpoint.',
     evidence:'Engagement type: Internal Audit Review — Claims Processing V21. No premium or tariff data available.',
@@ -3179,6 +3194,7 @@ const CP_REQUIRED_DOCS = {
   28: ['Audit Report'],
   29: ['Audit Report'],
   30: ['Audit Report'],
+  31: ['Workpapers'],
   32: ['Premium Recalculation'],
 };
 
